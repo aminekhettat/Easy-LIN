@@ -1,0 +1,175 @@
+/* Sample LIN Description File
+ * Used for testing and demonstration of Easy-LIN.
+ * Covers the main LDF sections present in a real ECU project.
+ */
+
+LIN_description_file ;
+
+LIN_protocol_version = "2.1" ;
+LIN_language_version = "2.1" ;
+LIN_speed = 19.2 kbps ;
+Channel_name = "LIN_1" ;
+
+/* Nodes */
+Nodes {
+    Master: BCM, 5 ms, 0.1 ms ;
+    Slaves: BodyControl, WindowLeft, WindowRight, SeatLeft ;
+}
+
+/* Node attributes */
+Node_attributes {
+    BodyControl {
+        LIN_protocol = "2.1" ;
+        configured_NAD = 0x01 ;
+        initial_NAD = 0x01 ;
+        product_id = 0x0012, 0x0034, 0x01 ;
+        response_error = BodyErr ;
+        P2_min = 50 ms ;
+        ST_min = 0 ms ;
+    }
+    WindowLeft {
+        LIN_protocol = "2.1" ;
+        configured_NAD = 0x02 ;
+        initial_NAD = 0x02 ;
+        product_id = 0x0012, 0x0035, 0x01 ;
+        response_error = WinLeftErr ;
+        P2_min = 50 ms ;
+        ST_min = 0 ms ;
+    }
+    WindowRight {
+        LIN_protocol = "2.1" ;
+        configured_NAD = 0x03 ;
+        initial_NAD = 0x03 ;
+        product_id = 0x0012, 0x0036, 0x01 ;
+        response_error = WinRightErr ;
+        P2_min = 50 ms ;
+        ST_min = 0 ms ;
+    }
+    SeatLeft {
+        LIN_protocol = "2.1" ;
+        configured_NAD = 0x04 ;
+        initial_NAD = 0x04 ;
+        product_id = 0x0012, 0x0037, 0x01 ;
+        response_error = SeatErr ;
+        P2_min = 50 ms ;
+        ST_min = 0 ms ;
+    }
+}
+
+/* Signals */
+Signals {
+    /* Window control signals – published by master */
+    WinLeftCmd     :  2, 0, BCM, WindowLeft ;
+    WinRightCmd    :  2, 0, BCM, WindowRight ;
+    SeatFwdCmd     :  2, 0, BCM, SeatLeft ;
+    SeatHtCmd      :  1, 0, BCM, SeatLeft ;
+    MirrorLRCmd    :  2, 0, BCM, BodyControl ;
+    MirrorUDCmd    :  2, 0, BCM, BodyControl ;
+
+    /* Status signals – published by slaves */
+    WinLeftPos     :  8, 0, WindowLeft,  BCM ;
+    WinRightPos    :  8, 0, WindowRight, BCM ;
+    SeatFwdPos     :  8, 0, SeatLeft,    BCM ;
+    SeatHeat       :  4, 0, SeatLeft,    BCM ;
+    BodyErr        :  1, 0, BodyControl, BCM ;
+    WinLeftErr     :  1, 0, WindowLeft,  BCM ;
+    WinRightErr    :  1, 0, WindowRight, BCM ;
+    SeatErr        :  1, 0, SeatLeft,    BCM ;
+    InteriorTemp   :  8, 0, BodyControl, BCM ;
+}
+
+/* Frames */
+Frames {
+    /* Command frames (master → slaves) */
+    WinCmd : 0x10, BCM, 2 {
+        WinLeftCmd,  0 ;
+        WinRightCmd, 2 ;
+    }
+
+    SeatCmd : 0x11, BCM, 1 {
+        SeatFwdCmd,  0 ;
+        SeatHtCmd,   2 ;
+    }
+
+    MirrorCmd : 0x12, BCM, 1 {
+        MirrorLRCmd, 0 ;
+        MirrorUDCmd, 2 ;
+    }
+
+    /* Status frames (slaves → master) */
+    WinStatus : 0x20, WindowLeft, 2 {
+        WinLeftPos,  0 ;
+        WinRightPos, 8 ;
+    }
+
+    SeatStatus : 0x21, SeatLeft, 2 {
+        SeatFwdPos, 0 ;
+        SeatHeat,   8 ;
+    }
+
+    BodyStatus : 0x22, BodyControl, 2 {
+        InteriorTemp, 0 ;
+        BodyErr,      8 ;
+        WinLeftErr,   9 ;
+        WinRightErr,  10 ;
+        SeatErr,      11 ;
+    }
+}
+
+/* Schedule tables */
+Schedule_tables {
+    Normal_Schedule {
+        WinCmd    delay 10 ms ;
+        SeatCmd   delay 10 ms ;
+        MirrorCmd delay 10 ms ;
+        WinStatus delay 10 ms ;
+        SeatStatus delay 10 ms ;
+        BodyStatus delay 10 ms ;
+    }
+
+    Slow_Schedule {
+        WinCmd    delay 20 ms ;
+        WinStatus delay 20 ms ;
+        BodyStatus delay 20 ms ;
+    }
+}
+
+/* Signal encoding types */
+Signal_encoding_types {
+    MotorCmd {
+        logical_value, 0, "Idle" ;
+        logical_value, 1, "Up / Forward" ;
+        logical_value, 2, "Down / Backward" ;
+        logical_value, 3, "Reserved" ;
+    }
+
+    Position {
+        physical_value, 0, 255, 0.392, 0, "%" ;
+    }
+
+    HeatLevel {
+        logical_value, 0,  "Off" ;
+        logical_value, 1,  "Low" ;
+        logical_value, 2,  "Medium" ;
+        logical_value, 3,  "High" ;
+        logical_value, 15, "Error" ;
+    }
+
+    ErrorFlag {
+        logical_value, 0, "OK" ;
+        logical_value, 1, "Error" ;
+    }
+
+    Temperature {
+        physical_value, 0, 255, 1, -40, "°C" ;
+    }
+}
+
+/* Signal representation */
+Signal_representation {
+    MotorCmd  : WinLeftCmd, WinRightCmd, SeatFwdCmd, MirrorLRCmd, MirrorUDCmd ;
+    Position  : WinLeftPos, WinRightPos, SeatFwdPos ;
+    HeatLevel : SeatHeat, SeatHtCmd ;
+    ErrorFlag : BodyErr, WinLeftErr, WinRightErr, SeatErr ;
+    Temperature : InteriorTemp ;
+}
