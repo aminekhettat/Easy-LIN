@@ -1,26 +1,83 @@
 # Easy-LIN
 
-Easy-LIN is an open-source tool designed to work with the **LIN (Local Interconnect Network)** bus protocol. It provides the following capabilities:
+Easy-LIN is a Python tool for working with the **LIN (Local Interconnect Network)** bus protocol. It combines LDF parsing, consistency checks, and real-time/simulated communication workflows in a desktop application.
 
-- **LDF File Interpreter**: Parse and interpret LIN Description Files (LDF) to extract network topology, signals, frames, schedules, and node configurations as defined by the LIN specification.
-- **LDF Consistency Checker**: Validate LDF files and check their internal consistency, detecting errors or mismatches in signal lengths, frame sizes, schedule tables, and node attributes before deployment.
-- **Real-Time LIN Communication**: Connect to a LIN bus in real time using **Vector CANcase XL** and compatible Vector interfaces, enabling live signal monitoring, frame transmission, and schedule execution with a target product.
-- **Extensible Hardware Support**: Additional USB LIN interface boxes and adapters will be integrated step by step as the project evolves.
+## Overview
+
+Easy-LIN lets you:
+
+- Parse and interpret LIN Description Files (`.ldf`) for network topology, signals, frames, schedules, and node attributes
+- Validate LDF internal consistency (signal sizes, frame payloads, schedule tables, node definitions)
+- Browse LDF content in a GUI tree and inspect detailed signal/frame metadata
+- Communicate with real LIN hardware (Vector XL driver via `python-can`) for frame TX/RX
+- Fall back to simulation mode when hardware is unavailable
+
+![Easy-LIN Screenshot](screenshot.png)
 
 ## Features
 
-- Parse and display the full content of LDF files
-- Validate LDF consistency (signal ranges, frame payloads, schedule entries, etc.)
-- Send and receive LIN frames in real time via Vector hardware
-- Interactive schedule table execution
-- Planned support for further USB LIN hardware devices
+- LDF parser supporting common LIN spec sections and metadata
+- LDF consistency checking to catch invalid definitions early
+- Live communication panel for connect/send/monitor workflows
+- Interactive project layout designed for extension to other USB LIN interfaces
+
+## Project Structure
+
+```text
+Easy-LIN/
+|- main.py                        Application entry point
+|- requirements.txt               Python dependencies
+|- src/
+|  |- ldf/
+|  |  |- parser.py                LDF parser
+|  |- communication/
+|  |  |- vector_lin.py            Vector CAN/LIN wrapper
+|  |- gui/
+|  |  |- main_window.py           Main window
+|  |  |- ldf_tree.py              LDF tree widget
+|  |  |- signal_viewer.py         Signal/details panel
+|  |  |- comm_panel.py            Communication panel
+|- tests/
+|  |- test_ldf_parser.py          Parser tests
+|  |- fixtures/
+|  |  |- sample.ldf               Test fixture
+```
+
+## Quick Start
+
+1. Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+2. Run the application:
+
+```bash
+python main.py
+```
+
+3. Open an LDF file from the GUI.
+
+## LIN Communication Requirements
+
+- Vector LIN-compatible interface
+- Vector XL driver installed
+- `python-can >= 4.0.0`
+
+## Running Tests
+
+```bash
+python -m pytest tests/ -v
+```
 
 ## License
 
-This project is source-available. See the [LICENSE](LICENSE) file for full terms.  
-In short: you may view and use the code for personal, non-commercial purposes, but redistribution and use in commercial projects are **not permitted** without prior written permission from the author.
+This project is source-available. See the [LICENSE](LICENSE) file for full terms.
+
+In short: personal, non-commercial use is allowed; redistribution and commercial usage require prior written permission from the author.
 
 ## Contributing
 
-Contributions, bug reports, and feature requests are welcome. Please open an issue or a pull request on [GitHub](https://github.com/aminekhettat/Easy-LIN).
+Contributions, bug reports, and feature requests are welcome via issues and pull requests on GitHub.
 
