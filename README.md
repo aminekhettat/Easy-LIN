@@ -15,6 +15,11 @@ Easy-LIN lets you:
 ![Easy-LIN Screenshot](screenshot.png)
 
 ## Features
+Run the preserved PyQt implementation:
+
+```bash
+python main.py --qt
+```
 
 - LDF parser supporting common LIN spec sections and metadata
 - LDF consistency checking to catch invalid definitions early
@@ -28,11 +33,13 @@ Easy-LIN/
 |- main.py                        Application entry point
 |- requirements.txt               Python dependencies
 |- src/
+|  |  |- main_window_qt.py        Alternative PyQt main window
 |  |- ldf/
 |  |  |- parser.py                LDF parser
 |  |- communication/
 |  |  |- vector_lin.py            Vector CAN/LIN wrapper
 |  |- gui/
+|  |- test_feature_ldf_parser_pyqt_branch.py  Preserved PyQt-branch parser tests
 |  |  |- main_window.py           Main window
 |  |  |- ldf_tree.py              LDF tree widget
 |  |  |- signal_viewer.py         Signal/details panel
@@ -80,4 +87,3 @@ In short: personal, non-commercial use is allowed; redistribution and commercial
 ## Contributing
 
 Contributions, bug reports, and feature requests are welcome via issues and pull requests on GitHub.
-
