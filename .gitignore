@@ -3,6 +3,12 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+# Never commit LIN description assets
+*.ldf
+**/*.ldf
+**/ldf/
+**/LDF/
+
 # C extensions
 *.so
 

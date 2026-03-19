@@ -21,8 +21,9 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 try:
     import can
+
     _CAN_AVAILABLE = True
-except ImportError:
+except ImportError:  # pragma: no cover - depends on runtime environment
     can = None  # type: ignore[assignment]
     _CAN_AVAILABLE = False
 
@@ -35,34 +36,34 @@ class LINError(Exception):
 # Data structures
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class LINFrame:
     """A single LIN bus frame (data payload + metadata)."""
+
     frame_id: int
-    data: bytes = b''
+    data: bytes = b""
     timestamp: float = field(default_factory=time.time)
-    direction: str = 'TX'   # 'TX' or 'RX'
+    direction: str = "TX"  # 'TX' or 'RX'
     is_error: bool = False
-    error_description: str = ''
+    error_description: str = ""
 
     @property
     def frame_id_hex(self) -> str:
-        return f'0x{self.frame_id:02X}'
+        return f"0x{self.frame_id:02X}"
 
     @property
     def data_hex(self) -> str:
-        return ' '.join(f'{b:02X}' for b in self.data)
+        return " ".join(f"{b:02X}" for b in self.data)
 
     def __str__(self) -> str:
-        return (
-            f"[{self.direction}] ID={self.frame_id_hex} "
-            f"Data=[{self.data_hex}]"
-        )
+        return f"[{self.direction}] ID={self.frame_id_hex} Data=[{self.data_hex}]"
 
 
 # ---------------------------------------------------------------------------
 # Simulation bus (used when Vector hardware is absent)
 # ---------------------------------------------------------------------------
+
 
 class _SimBus:
     """
@@ -80,12 +81,13 @@ class _SimBus:
 
     def send(self, frame: LINFrame) -> None:
         """Simulate sending a LIN frame by echoing it as RX after 5 ms."""
+
         def _echo():
             time.sleep(0.005)
             rx = LINFrame(
                 frame_id=frame.frame_id,
                 data=frame.data,
-                direction='RX',
+                direction="RX",
             )
             with self._lock:
                 for cb in self._rx_callbacks:
@@ -109,6 +111,7 @@ class _SimBus:
 # Vector LIN bus wrapper
 # ---------------------------------------------------------------------------
 
+
 class VectorLINBus:
     """
     High-level interface to a LIN bus via Vector hardware (XL-driver).
@@ -129,7 +132,7 @@ class VectorLINBus:
         self,
         channel: int = 0,
         bitrate: int = 19200,
-        app_name: str = 'Easy-LIN',
+        app_name: str = "Easy-LIN",
     ) -> None:
         self.channel = channel
         self.bitrate = bitrate
@@ -166,7 +169,7 @@ class VectorLINBus:
         if not _CAN_AVAILABLE:
             return []
         try:
-            cfg = can.detect_available_configs(interfaces=['vector'])
+            cfg = can.detect_available_configs(interfaces=["vector"])
             return list(cfg)
         except Exception:
             return []
@@ -183,7 +186,7 @@ class VectorLINBus:
         self._running = True
         if not self._simulation:
             self._rx_thread = threading.Thread(
-                target=self._rx_loop, daemon=True, name='LIN-RX'
+                target=self._rx_loop, daemon=True, name="LIN-RX"
             )
             self._rx_thread.start()
 
@@ -229,7 +232,7 @@ class VectorLINBus:
         """
         if not self._running:
             raise LINError("Bus is not started.  Call start() first.")
-        frame.direction = 'TX'
+        frame.direction = "TX"
         frame.timestamp = time.time()
         self._notify_tx(frame)
 
@@ -238,9 +241,7 @@ class VectorLINBus:
         else:
             self._send_via_can(frame)
 
-    def send_frame_by_id(
-        self, frame_id: int, data: bytes | list[int]
-    ) -> LINFrame:
+    def send_frame_by_id(self, frame_id: int, data: bytes | list[int]) -> LINFrame:
         """Convenience wrapper: send a frame given *frame_id* and *data*."""
         if isinstance(data, list):
             data = bytes(data)
@@ -259,19 +260,24 @@ class VectorLINBus:
             )
             self._simulation = True
             self._sim_bus = _SimBus()
+            with self._lock:
+                callbacks = list(self._rx_callbacks)
+            for callback in callbacks:
+                self._sim_bus.add_rx_callback(callback)
             return
 
         try:
             self._bus = can.interface.Bus(
-                bustype='vector',
+                bustype="vector",
                 channel=self.channel,
                 bitrate=self.bitrate,
                 app_name=self.app_name,
-                lin_type='LIN',
+                lin_type="LIN",
             )
             logger.info(
                 "Opened Vector LIN channel %d at %d bps.",
-                self.channel, self.bitrate,
+                self.channel,
+                self.bitrate,
             )
         except Exception as exc:
             logger.warning(
@@ -280,6 +286,10 @@ class VectorLINBus:
             )
             self._simulation = True
             self._sim_bus = _SimBus()
+            with self._lock:
+                callbacks = list(self._rx_callbacks)
+            for callback in callbacks:
+                self._sim_bus.add_rx_callback(callback)
 
     def _rx_loop(self) -> None:
         """Background thread: receive frames from python-can and dispatch."""
@@ -291,7 +301,7 @@ class VectorLINBus:
                         frame_id=msg.arbitration_id & 0x3F,
                         data=bytes(msg.data),
                         timestamp=msg.timestamp,
-                        direction='RX',
+                        direction="RX",
                     )
                     self._notify_rx(frame)
             except Exception:

@@ -14,17 +14,20 @@ from typing import List, Optional, Dict
 # Data model
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class LDFMaster:
     """LIN master node description."""
+
     name: str
-    time_base: float   # ms
-    jitter: float      # ms
+    time_base: float  # ms
+    jitter: float  # ms
 
 
 @dataclass
 class LDFNodes:
     """Nodes section of an LDF file."""
+
     master: LDFMaster
     slaves: List[str]
 
@@ -32,9 +35,10 @@ class LDFNodes:
 @dataclass
 class LDFSignal:
     """Single signal definition."""
+
     name: str
-    size: int            # bits
-    init_value: int      # initial / default value
+    size: int  # bits
+    init_value: int  # initial / default value
     publisher: str
     subscribers: List[str]
 
@@ -42,6 +46,7 @@ class LDFSignal:
 @dataclass
 class LDFFrameSignal:
     """Signal placement inside a frame."""
+
     signal_name: str
     bit_offset: int
 
@@ -49,23 +54,26 @@ class LDFFrameSignal:
 @dataclass
 class LDFFrame:
     """Frame (message) definition."""
+
     name: str
-    frame_id: int        # 0x00-0x3B for normal frames
+    frame_id: int  # 0x00-0x3B for normal frames
     publisher: str
-    frame_size: int      # bytes (1-8)
+    frame_size: int  # bytes (1-8)
     signals: List[LDFFrameSignal] = field(default_factory=list)
 
 
 @dataclass
 class LDFScheduleEntry:
     """One entry in a schedule table."""
+
     frame_name: str
-    delay: float          # ms
+    delay: float  # ms
 
 
 @dataclass
 class LDFScheduleTable:
     """A named schedule table."""
+
     name: str
     entries: List[LDFScheduleEntry] = field(default_factory=list)
 
@@ -73,6 +81,7 @@ class LDFScheduleTable:
 @dataclass
 class LDFLogicalValue:
     """Symbolic name for a signal value."""
+
     signal_value: int
     text: str
 
@@ -80,6 +89,7 @@ class LDFLogicalValue:
 @dataclass
 class LDFPhysicalRange:
     """Physical representation range for a signal."""
+
     min_value: int
     max_value: int
     scale: float
@@ -90,6 +100,7 @@ class LDFPhysicalRange:
 @dataclass
 class LDFEncodingType:
     """Signal encoding / representation type."""
+
     name: str
     logical_values: List[LDFLogicalValue] = field(default_factory=list)
     physical_ranges: List[LDFPhysicalRange] = field(default_factory=list)
@@ -100,6 +111,7 @@ class LDFEncodingType:
 @dataclass
 class LDFSignalRepresentation:
     """Associates an encoding type with one or more signals."""
+
     encoding_type: str
     signals: List[str] = field(default_factory=list)
 
@@ -107,6 +119,7 @@ class LDFSignalRepresentation:
 @dataclass
 class LDFNodeAttributes:
     """LIN 2.x node attributes block."""
+
     node_name: str
     lin_protocol: str = ""
     configured_nad: int = 0
@@ -125,9 +138,10 @@ class LDFNodeAttributes:
 @dataclass
 class LDFFile:
     """Complete parsed representation of an LDF file."""
+
     protocol_version: str = "2.0"
     language_version: str = "2.0"
-    speed: float = 19.2                    # kbps
+    speed: float = 19.2  # kbps
     channel_name: Optional[str] = None
     nodes: Optional[LDFNodes] = None
     signals: List[LDFSignal] = field(default_factory=list)
@@ -163,21 +177,21 @@ class LDFFile:
 # ---------------------------------------------------------------------------
 
 _TOKEN_RE = re.compile(
-    r'"[^"]*"'            # quoted string
-    r'|0[xX][0-9A-Fa-f]+'  # hex integer
-    r'|\d+\.\d+'          # float
-    r'|\d+'               # integer
-    r'|[A-Za-z_][A-Za-z0-9_.]*'  # identifier (allow dots for version strings)
-    r'|[{}:;=,\-]'        # single-char punctuation (including minus)
+    r'"[^"]*"'  # quoted string
+    r"|0[xX][0-9A-Fa-f]+"  # hex integer
+    r"|\d+\.\d+"  # float
+    r"|\d+"  # integer
+    r"|[A-Za-z_][A-Za-z0-9_.]*"  # identifier (allow dots for version strings)
+    r"|[{}:;=,\-]"  # single-char punctuation (including minus)
 )
 
 
 def _remove_comments(text: str) -> str:
     """Strip // line comments and /* … */ block comments."""
     # Block comments first
-    text = re.sub(r'/\*.*?\*/', ' ', text, flags=re.DOTALL)
+    text = re.sub(r"/\*.*?\*/", " ", text, flags=re.DOTALL)
     # Line comments
-    text = re.sub(r'//[^\n]*', ' ', text)
+    text = re.sub(r"//[^\n]*", " ", text)
     return text
 
 
@@ -188,6 +202,7 @@ def _tokenize(text: str) -> List[str]:
 # ---------------------------------------------------------------------------
 # Parser helpers
 # ---------------------------------------------------------------------------
+
 
 class _Parser:
     """Token-stream parser for LDF files."""
@@ -212,8 +227,7 @@ class _Parser:
         tok = self._consume()
         if tok != value:
             raise LDFParseError(
-                f"Expected '{value}' but got '{tok}' "
-                f"(near token index {self._pos})"
+                f"Expected '{value}' but got '{tok}' (near token index {self._pos})"
             )
         return tok
 
@@ -222,7 +236,7 @@ class _Parser:
 
     def _expect_identifier(self) -> str:
         tok = self._consume()
-        if not re.match(r'^[A-Za-z_][A-Za-z0-9_.]*$', tok):
+        if not re.match(r"^[A-Za-z_][A-Za-z0-9_.]*$", tok):
             raise LDFParseError(f"Expected identifier, got '{tok}'")
         return tok
 
@@ -248,7 +262,7 @@ class _Parser:
     def _parse_number(tok: str) -> int:
         """Parse a decimal or hex integer token."""
         tok = tok.strip()
-        if tok.startswith('0x') or tok.startswith('0X'):
+        if tok.startswith("0x") or tok.startswith("0X"):
             return int(tok, 16)
         try:
             return int(tok, 10)
@@ -379,7 +393,7 @@ class _Parser:
         signals: List[LDFSignal] = []
         self._expect("{")
         while self._peek() != "}":
-            if self._peek() is None:
+            if self._peek() is None:  # pragma: no cover - defensive EOF guard
                 break
             name = self._expect_identifier()
             self._expect(":")
@@ -401,13 +415,15 @@ class _Parser:
                 self._consume()
                 subscribers.append(self._expect_identifier())
             self._expect_semi()
-            signals.append(LDFSignal(
-                name=name,
-                size=size,
-                init_value=init_value,
-                publisher=publisher,
-                subscribers=subscribers,
-            ))
+            signals.append(
+                LDFSignal(
+                    name=name,
+                    size=size,
+                    init_value=init_value,
+                    publisher=publisher,
+                    subscribers=subscribers,
+                )
+            )
         self._expect("}")
         return signals
 
@@ -415,7 +431,7 @@ class _Parser:
         frames: List[LDFFrame] = []
         self._expect("{")
         while self._peek() != "}":
-            if self._peek() is None:
+            if self._peek() is None:  # pragma: no cover - defensive EOF guard
                 break
             name = self._expect_identifier()
             self._expect(":")
@@ -427,7 +443,7 @@ class _Parser:
             self._expect("{")
             sig_refs: List[LDFFrameSignal] = []
             while self._peek() != "}":
-                if self._peek() is None:
+                if self._peek() is None:  # pragma: no cover - defensive EOF guard
                     break
                 sig_name = self._expect_identifier()
                 self._expect(",")
@@ -435,13 +451,15 @@ class _Parser:
                 self._expect_semi()
                 sig_refs.append(LDFFrameSignal(signal_name=sig_name, bit_offset=offset))
             self._expect("}")
-            frames.append(LDFFrame(
-                name=name,
-                frame_id=frame_id,
-                publisher=publisher,
-                frame_size=frame_size,
-                signals=sig_refs,
-            ))
+            frames.append(
+                LDFFrame(
+                    name=name,
+                    frame_id=frame_id,
+                    publisher=publisher,
+                    frame_size=frame_size,
+                    signals=sig_refs,
+                )
+            )
         self._expect("}")
         return frames
 
@@ -449,13 +467,13 @@ class _Parser:
         tables: List[LDFScheduleTable] = []
         self._expect("{")
         while self._peek() != "}":
-            if self._peek() is None:
+            if self._peek() is None:  # pragma: no cover - defensive EOF guard
                 break
             table_name = self._expect_identifier()
             self._expect("{")
             entries: List[LDFScheduleEntry] = []
             while self._peek() != "}":
-                if self._peek() is None:
+                if self._peek() is None:  # pragma: no cover - defensive EOF guard
                     break
                 # Frame name or special command (AssignNAD, FreeFormat, …)
                 frame_or_cmd = self._expect_identifier()
@@ -477,13 +495,13 @@ class _Parser:
         types: List[LDFEncodingType] = []
         self._expect("{")
         while self._peek() != "}":
-            if self._peek() is None:
+            if self._peek() is None:  # pragma: no cover - defensive EOF guard
                 break
             enc_name = self._expect_identifier()
             self._expect("{")
             enc = LDFEncodingType(name=enc_name)
             while self._peek() != "}":
-                if self._peek() is None:
+                if self._peek() is None:  # pragma: no cover - defensive EOF guard
                     break
                 kind = self._consume()
                 if kind == "logical_value":
@@ -492,7 +510,9 @@ class _Parser:
                     self._expect(",")
                     text = self._strip_quotes(self._consume())
                     self._expect_semi()
-                    enc.logical_values.append(LDFLogicalValue(signal_value=val, text=text))
+                    enc.logical_values.append(
+                        LDFLogicalValue(signal_value=val, text=text)
+                    )
                 elif kind == "physical_value":
                     self._expect(",")
                     min_v = self._consume_number()
@@ -505,10 +525,15 @@ class _Parser:
                     self._expect(",")
                     unit = self._strip_quotes(self._consume())
                     self._expect_semi()
-                    enc.physical_ranges.append(LDFPhysicalRange(
-                        min_value=min_v, max_value=max_v,
-                        scale=scale, offset=offset, unit=unit,
-                    ))
+                    enc.physical_ranges.append(
+                        LDFPhysicalRange(
+                            min_value=min_v,
+                            max_value=max_v,
+                            scale=scale,
+                            offset=offset,
+                            unit=unit,
+                        )
+                    )
                 elif kind == "bcd_value":
                     self._expect_semi()
                     enc.bcd = True
@@ -530,7 +555,7 @@ class _Parser:
         reps: List[LDFSignalRepresentation] = []
         self._expect("{")
         while self._peek() != "}":
-            if self._peek() is None:
+            if self._peek() is None:  # pragma: no cover - defensive EOF guard
                 break
             enc_name = self._expect_identifier()
             self._expect(":")
@@ -549,13 +574,13 @@ class _Parser:
         attrs: List[LDFNodeAttributes] = []
         self._expect("{")
         while self._peek() != "}":
-            if self._peek() is None:
+            if self._peek() is None:  # pragma: no cover - defensive EOF guard
                 break
             node_name = self._expect_identifier()
             self._expect("{")
             na = LDFNodeAttributes(node_name=node_name)
             while self._peek() != "}":
-                if self._peek() is None:
+                if self._peek() is None:  # pragma: no cover - defensive EOF guard
                     break
                 key = self._consume()
                 if key == "LIN_protocol":
@@ -609,7 +634,9 @@ class _Parser:
                 elif key == "configurable_frames":
                     self._expect("{")
                     while self._peek() != "}":
-                        if self._peek() is None:
+                        if (
+                            self._peek() is None
+                        ):  # pragma: no cover - defensive EOF guard
                             break
                         fname = self._consume()
                         if fname == ";":
@@ -644,6 +671,7 @@ class _Parser:
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 class LDFParseError(Exception):
     """Raised when an LDF file cannot be parsed."""
