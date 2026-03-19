@@ -1,12 +1,16 @@
-﻿"""
-Easy-LIN main window.
+"""Easy-LIN main window for the preserved PyQt frontend.
 
-Provides the top-level application window which hosts:
-  - Menu bar   (File, Hardware, Help)
-  - Toolbar
-  - LDF Viewer tabs (populated after opening a file)
-  - Communication Panel (always visible as a right-side dock)
-  - Status bar
+Provides the top-level application window hosting the LDF viewer, hardware
+communication dock, menus, toolbar, and persistent window state.
+
+:author: Amine Khettat
+:company: BLIND SYSTEMS
+:website: https://www.blindsystems.org
+:version: 0.5.0
+:copyright: Copyright (c) 2026 Amine Khettat
+:license: Easy-LIN Source-Available License Version 1.0. See LICENSE.
+:disclaimer: Provided "AS IS", without warranties or liability, as described
+        in LICENSE.
 """
 
 import logging
@@ -14,9 +18,16 @@ import os
 from typing import Optional
 
 from PyQt5.QtWidgets import (
-    QMainWindow, QWidget, QSplitter, QDockWidget,
-    QAction, QFileDialog, QMessageBox, QLabel,
-    QToolBar, QApplication,
+    QMainWindow,
+    QWidget,
+    QSplitter,
+    QDockWidget,
+    QAction,
+    QFileDialog,
+    QMessageBox,
+    QLabel,
+    QToolBar,
+    QApplication,
 )
 from PyQt5.QtCore import Qt, QSettings, QSize
 from PyQt5.QtGui import QIcon, QFont, QKeySequence
@@ -36,6 +47,7 @@ class MainWindow(QMainWindow):
     """Top-level application window."""
 
     def __init__(self) -> None:
+        """Initialize the main PyQt window and restore persisted state."""
         super().__init__()
         self._ldf: Optional[LDFFile] = None
         self._ldf_path: Optional[str] = None
@@ -54,6 +66,7 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def _build_ui(self) -> None:
+        """Create the placeholder central widget, dock, and status bar."""
         # Central placeholder (shown before any LDF is loaded)
         self._placeholder = QWidget()
         placeholder_lbl = QLabel(
@@ -70,6 +83,7 @@ class MainWindow(QMainWindow):
         font.setPointSize(11)
         placeholder_lbl.setFont(font)
         from PyQt5.QtWidgets import QVBoxLayout
+
         pl = QVBoxLayout(self._placeholder)
         pl.addWidget(placeholder_lbl)
         self.setCentralWidget(self._placeholder)
@@ -87,6 +101,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Ready")
 
     def _build_menu(self) -> None:
+        """Create the main menu bar and its actions."""
         mb = self.menuBar()
 
         # ---- File -------------------------------------------------------
@@ -126,6 +141,7 @@ class MainWindow(QMainWindow):
         help_menu.addAction(vector_action)
 
     def _build_toolbar(self) -> None:
+        """Create the fixed main toolbar."""
         tb: QToolBar = self.addToolBar("Main")
         tb.setObjectName("MainToolbar")
         tb.setMovable(False)
@@ -141,6 +157,7 @@ class MainWindow(QMainWindow):
         self._load_ldf(path)
 
     def _open_ldf(self) -> None:
+        """Prompt for an LDF file and load it into the main viewer."""
         last_dir = self._settings.value("last_open_dir", os.path.expanduser("~"))
         path, _ = QFileDialog.getOpenFileName(
             self,
@@ -153,6 +170,7 @@ class MainWindow(QMainWindow):
         self._load_ldf(path)
 
     def _load_ldf(self, path: str) -> None:
+        """Parse and display the requested LDF file."""
         try:
             ldf = parse_ldf(path)
         except FileNotFoundError:
@@ -162,7 +180,9 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, APP_NAME, f"LDF parse error:\n{exc}")
             return
         except Exception as exc:
-            QMessageBox.critical(self, APP_NAME, f"Unexpected error loading LDF:\n{exc}")
+            QMessageBox.critical(
+                self, APP_NAME, f"Unexpected error loading LDF:\n{exc}"
+            )
             log.exception("Unexpected error loading LDF")
             return
 
@@ -199,6 +219,7 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def _add_recent(self, path: str) -> None:
+        """Insert one path into the recent-files history."""
         recent = self._settings.value("recent_files", []) or []
         if path in recent:
             recent.remove(path)
@@ -208,6 +229,7 @@ class MainWindow(QMainWindow):
         self._update_recent_menu()
 
     def _update_recent_menu(self) -> None:
+        """Rebuild the recent-files submenu from persisted settings."""
         self._recent_menu.clear()
         recent = self._settings.value("recent_files", []) or []
         for path in recent:
@@ -226,6 +248,7 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def _show_about(self) -> None:
+        """Display the About dialog for the preserved PyQt frontend."""
         QMessageBox.about(
             self,
             f"About {APP_NAME}",
@@ -244,7 +267,9 @@ class MainWindow(QMainWindow):
 
     @staticmethod
     def _open_vector_docs() -> None:
+        """Open the public Vector XL Driver Library page in a browser."""
         import webbrowser
+
         webbrowser.open(
             "https://www.vector.com/int/en/products/products-a-z/"
             "software/xl-driver-library/"
@@ -255,6 +280,7 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def _restore_geometry(self) -> None:
+        """Restore window geometry and dock layout from settings."""
         geom = self._settings.value("geometry")
         state = self._settings.value("windowState")
         if geom:
@@ -263,6 +289,7 @@ class MainWindow(QMainWindow):
             self.restoreState(state)
 
     def closeEvent(self, event) -> None:
+        """Persist geometry and dock state before closing the window."""
         self._settings.setValue("geometry", self.saveGeometry())
         self._settings.setValue("windowState", self.saveState())
         super().closeEvent(event)

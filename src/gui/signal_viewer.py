@@ -1,7 +1,15 @@
-"""
-Accessible detail viewer panel.
+"""Accessible detail viewer panel.
 
 Displays detailed human-readable information about a selected tree item.
+
+:author: Amine Khettat
+:company: BLIND SYSTEMS
+:website: https://www.blindsystems.org
+:version: 0.5.0
+:copyright: Copyright (c) 2026 Amine Khettat
+:license: Easy-LIN Source-Available License Version 1.0. See LICENSE.
+:disclaimer: Provided "AS IS", without warranties or liability, as described
+    in LICENSE.
 """
 
 from __future__ import annotations
@@ -18,6 +26,7 @@ class DetailViewer(ttk.LabelFrame):
     """Displays detailed information about a selected LDF element."""
 
     def __init__(self, parent: tk.Widget, **kwargs) -> None:
+        """Initialize the detail viewer and its text area."""
         kwargs.setdefault("text", "Details")
         super().__init__(parent, **kwargs)
         self._ldf: Optional[LDFFile] = None
@@ -28,6 +37,7 @@ class DetailViewer(ttk.LabelFrame):
     # ------------------------------------------------------------------
 
     def set_ldf(self, ldf: LDFFile) -> None:
+        """Store the parsed LDF used to resolve narrated descriptions."""
         self._ldf = ldf
 
     def show(self, info: dict) -> None:
@@ -49,6 +59,7 @@ class DetailViewer(ttk.LabelFrame):
         self._text.config(state="disabled")
 
     def clear(self) -> None:
+        """Clear the text area and forget the currently loaded LDF."""
         self._text.config(state="normal")
         self._text.delete("1.0", tk.END)
         self._text.config(state="disabled")
@@ -63,6 +74,7 @@ class DetailViewer(ttk.LabelFrame):
     # ------------------------------------------------------------------
 
     def _build_ui(self) -> None:
+        """Create the read-only text widget and formatting tags."""
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
 
@@ -99,8 +111,10 @@ class DetailViewer(ttk.LabelFrame):
     # ------------------------------------------------------------------
 
     def _writeln(self, text: str = "", tag: str = "value") -> None:
+        """Write one formatted line to the detail text widget."""
         self._text.insert(tk.END, text + "\n", tag)
 
     def _kv(self, key: str, value: str) -> None:
+        """Write one key-value pair using the configured text tags."""
         self._text.insert(tk.END, f"{key}: ", "key")
         self._text.insert(tk.END, f"{value}\n", "value")

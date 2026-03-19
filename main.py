@@ -1,7 +1,16 @@
-"""Easy-LIN application entry point.
+"""Application entry point for Easy-LIN.
 
-By default this starts the Tk application. Pass ``--qt`` to run the
-alternate PyQt application from the other integration branch.
+:mod:`main` starts the Tk interface by default and can launch the preserved
+PyQt interface with the ``--qt`` switch.
+
+:author: Amine Khettat
+:company: BLIND SYSTEMS
+:website: https://www.blindsystems.org
+:version: 0.5.0
+:copyright: Copyright (c) 2026 Amine Khettat
+:license: Easy-LIN Source-Available License Version 1.0. See LICENSE.
+:disclaimer: Provided "AS IS", without warranties or liability, as described
+    in LICENSE.
 """
 
 import logging
@@ -15,6 +24,7 @@ logging.basicConfig(
 
 
 def main() -> None:
+    """Launch the requested Easy-LIN user interface."""
     use_qt = "--qt" in sys.argv
 
     if use_qt:

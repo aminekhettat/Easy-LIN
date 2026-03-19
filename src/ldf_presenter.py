@@ -2,6 +2,15 @@
 
 This module is UI-framework agnostic so it can be tested independently and used
 by different GUI frontends.
+
+:author: Amine Khettat
+:company: BLIND SYSTEMS
+:website: https://www.blindsystems.org
+:version: 0.5.0
+:copyright: Copyright (c) 2026 Amine Khettat
+:license: Easy-LIN Source-Available License Version 1.0. See LICENSE.
+:disclaimer: Provided "AS IS", without warranties or liability, as described
+    in LICENSE.
 """
 
 from __future__ import annotations
@@ -26,6 +35,7 @@ def build_tree_nodes(ldf: LDFFile) -> list[TreeNode]:
     nodes: list[TreeNode] = []
 
     def add(key: str, label: str, value: str = "", parent_key: str = "") -> None:
+        """Append one normalized tree node to the presentation list."""
         nodes.append(TreeNode(key=key, label=label, value=value, parent_key=parent_key))
 
     add("header", "Header")
@@ -135,6 +145,7 @@ def describe_key(ldf: LDFFile, key: str) -> str:
 
 
 def describe_signal(sig: LDFSignal) -> str:
+    """Describe one signal in plain language for narrated output."""
     subscribers = ", ".join(sig.subscribers) if sig.subscribers else "no subscribers"
     return (
         f"Signal {sig.name}. Size {sig.size} bit. Initial value {sig.init_value}. "
@@ -143,6 +154,7 @@ def describe_signal(sig: LDFSignal) -> str:
 
 
 def describe_frame(frame: LDFFrame, ldf: LDFFile) -> str:
+    """Describe one frame and its mapped signals in reading order."""
     lines = [
         f"Frame {frame.name}. Identifier 0x{frame.frame_id:02X}. "
         f"Publisher {frame.publisher}. Frame size {frame.frame_size} byte(s)."
@@ -159,6 +171,7 @@ def describe_frame(frame: LDFFrame, ldf: LDFFile) -> str:
 
 
 def describe_encoding(encoding: LDFEncodingType) -> str:
+    """Describe one encoding type in screen-reader-friendly text."""
     lines = [f"Encoding type {encoding.name}."]
     for logical in encoding.logical_values:
         lines.append(f"Logical value {logical.signal_value} means {logical.text}.")
@@ -176,6 +189,7 @@ def describe_encoding(encoding: LDFEncodingType) -> str:
 
 
 def _encoding_summary(encoding: LDFEncodingType) -> str:
+    """Build a short summary string for one encoding node."""
     logical_count = len(encoding.logical_values)
     physical_count = len(encoding.physical_ranges)
     flags: list[str] = []

@@ -38,6 +38,7 @@ Signal_representation {
 
 
 def test_build_tree_nodes_contains_expected_sections() -> None:
+    """Ensure the presenter emits the expected top-level navigation nodes."""
     ldf = parse_ldf_string(LDF_TEXT)
     nodes = build_tree_nodes(ldf)
 
@@ -51,6 +52,7 @@ def test_build_tree_nodes_contains_expected_sections() -> None:
 
 
 def test_describe_key_signal_and_frame() -> None:
+    """Ensure signal and frame keys resolve to narrated descriptions."""
     ldf = parse_ldf_string(LDF_TEXT)
 
     signal_text = describe_key(ldf, "signal.S1")
@@ -63,6 +65,7 @@ def test_describe_key_signal_and_frame() -> None:
 
 
 def test_describe_key_schedule_and_header() -> None:
+    """Ensure schedule and header keys produce summary descriptions."""
     ldf = parse_ldf_string(LDF_TEXT)
 
     schedule_text = describe_key(ldf, "schedule.Main")
@@ -74,6 +77,7 @@ def test_describe_key_schedule_and_header() -> None:
 
 
 def test_describe_key_missing_and_default_message() -> None:
+    """Ensure missing keys and the default selection prompt are explicit."""
     ldf = parse_ldf_string(LDF_TEXT)
 
     missing_signal = describe_key(ldf, "signal.Unknown")
@@ -84,6 +88,7 @@ def test_describe_key_missing_and_default_message() -> None:
 
 
 def test_describe_key_missing_frame_and_encoding() -> None:
+    """Ensure missing frame, encoding, and schedule keys are reported."""
     ldf = parse_ldf_string(LDF_TEXT)
 
     missing_frame = describe_key(ldf, "frame.Unknown")
@@ -96,6 +101,7 @@ def test_describe_key_missing_frame_and_encoding() -> None:
 
 
 def test_describe_encoding_includes_flags() -> None:
+    """Ensure encoding descriptions mention logical entries and format flags."""
     ldf = parse_ldf_string(
         """
         LIN_description_file ;
@@ -117,6 +123,7 @@ def test_describe_encoding_includes_flags() -> None:
 
 
 def test_build_tree_nodes_encoding_summary_includes_formats() -> None:
+    """Ensure encoding summaries include BCD and ASCII format hints."""
     ldf = parse_ldf_string(
         """
         LIN_description_file ;
@@ -137,6 +144,7 @@ def test_build_tree_nodes_encoding_summary_includes_formats() -> None:
 
 
 def test_describe_key_encoding_with_physical_range() -> None:
+    """Ensure physical range details are included in encoding narration."""
     ldf = parse_ldf_string(
         """
         LIN_description_file ;
@@ -154,6 +162,7 @@ def test_describe_key_encoding_with_physical_range() -> None:
 
 
 def test_describe_frame_without_mapped_signals() -> None:
+    """Ensure empty frames are described without implying mapped signals."""
     ldf = parse_ldf_string(
         """
         LIN_description_file ;

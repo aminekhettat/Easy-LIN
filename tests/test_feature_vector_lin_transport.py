@@ -17,6 +17,7 @@ from src.communication.vector_lin import LINError, LINFrame, VectorLINBus
 
 
 def test_linframe_helpers_and_string() -> None:
+    """Ensure frame helper properties and string formatting are stable."""
     frame = LINFrame(frame_id=0x12, data=bytes([0xAB, 0xCD]), direction="TX")
 
     assert frame.frame_id_hex == "0x12"
@@ -25,12 +26,14 @@ def test_linframe_helpers_and_string() -> None:
 
 
 def test_send_without_start_raises() -> None:
+    """Ensure sending without starting the bus raises a LIN error."""
     bus = VectorLINBus()
     with pytest.raises(LINError):
         bus.send_frame(LINFrame(frame_id=1, data=b"\x00"))
 
 
 def test_simulation_mode_echoes_frames(monkeypatch) -> None:
+    """Ensure simulation mode mirrors transmitted frames back as RX traffic."""
     monkeypatch.setattr(vector_lin, "_CAN_AVAILABLE", False)
 
     bus = VectorLINBus()
@@ -54,11 +57,13 @@ def test_simulation_mode_echoes_frames(monkeypatch) -> None:
 
 
 def test_list_vector_channels_no_can_available(monkeypatch) -> None:
+    """Ensure channel discovery is empty when python-can is unavailable."""
     monkeypatch.setattr(vector_lin, "_CAN_AVAILABLE", False)
     assert VectorLINBus.list_vector_channels() == []
 
 
 def test_list_vector_channels_returns_configs(monkeypatch) -> None:
+    """Ensure channel discovery returns detected Vector configurations."""
     fake_can = SimpleNamespace(
         detect_available_configs=lambda interfaces: [
             {"interface": "vector", "channel": 0}
@@ -73,6 +78,7 @@ def test_list_vector_channels_returns_configs(monkeypatch) -> None:
 
 
 def test_list_vector_channels_handles_detection_error(monkeypatch) -> None:
+    """Ensure detection errors are handled by returning an empty list."""
     fake_can = SimpleNamespace(
         detect_available_configs=lambda interfaces: (_ for _ in ()).throw(
             RuntimeError("boom")
@@ -85,14 +91,21 @@ def test_list_vector_channels_handles_detection_error(monkeypatch) -> None:
 
 
 def test_start_vector_success_path(monkeypatch) -> None:
+    """Ensure a successful Vector backend start marks the bus connected."""
+
     class FakeBus:
+        """Minimal python-can bus stub for a successful start path."""
+
         def __init__(self, **kwargs):
+            """Store bus construction arguments for inspection."""
             self.kwargs = kwargs
 
         def recv(self, timeout):
+            """Return no frame during polling."""
             return None
 
         def shutdown(self):
+            """Provide a no-op shutdown method."""
             pass
 
     fake_can = SimpleNamespace(
@@ -110,7 +123,10 @@ def test_start_vector_success_path(monkeypatch) -> None:
 
 
 def test_start_vector_failure_falls_back_to_sim(monkeypatch) -> None:
+    """Ensure backend creation failures fall back to simulation mode."""
+
     def raising_bus(**kwargs):
+        """Raise a driver failure for the fallback test path."""
         raise RuntimeError("driver unavailable")
 
     fake_can = SimpleNamespace(interface=SimpleNamespace(Bus=raising_bus))
@@ -125,6 +141,7 @@ def test_start_vector_failure_falls_back_to_sim(monkeypatch) -> None:
 
 
 def test_add_rx_callback_after_sim_start(monkeypatch) -> None:
+    """Ensure callbacks added after simulation startup still receive frames."""
     monkeypatch.setattr(vector_lin, "_CAN_AVAILABLE", False)
     bus = VectorLINBus()
     bus.start()
@@ -139,15 +156,18 @@ def test_add_rx_callback_after_sim_start(monkeypatch) -> None:
 
 
 def test_notify_callbacks_handle_exceptions(monkeypatch) -> None:
+    """Ensure callback exceptions do not block other callbacks."""
     monkeypatch.setattr(vector_lin, "_CAN_AVAILABLE", False)
 
     bus = VectorLINBus()
     seen_rx = []
 
     def bad_rx(_frame):
+        """Raise an RX callback error for robustness testing."""
         raise RuntimeError("rx callback failed")
 
     def bad_tx(_frame):
+        """Raise a TX callback error for robustness testing."""
         raise RuntimeError("tx callback failed")
 
     bus.add_rx_callback(bad_rx)
@@ -162,16 +182,23 @@ def test_notify_callbacks_handle_exceptions(monkeypatch) -> None:
 
 
 def test_send_via_can_without_bus_noop() -> None:
+    """Ensure sending through CAN with no backend bus is a no-op."""
     bus = VectorLINBus()
     bus._send_via_can(LINFrame(frame_id=1, data=b"\x01"))
 
 
 def test_send_via_can_error(monkeypatch) -> None:
+    """Ensure send failures are wrapped as LIN errors."""
+
     class FailingBus:
+        """Bus stub that fails during send operations."""
+
         def send(self, msg):
+            """Raise a send failure."""
             raise RuntimeError("send failure")
 
         def shutdown(self):
+            """Provide a no-op shutdown method."""
             pass
 
     fake_can = SimpleNamespace(
@@ -191,8 +218,13 @@ def test_send_via_can_error(monkeypatch) -> None:
 
 
 def test_stop_handles_shutdown_exception() -> None:
+    """Ensure shutdown exceptions do not escape from ``stop``."""
+
     class BrokenBus:
+        """Bus stub whose shutdown method fails."""
+
         def shutdown(self):
+            """Raise a shutdown failure."""
             raise RuntimeError("cannot shutdown")
 
     bus = VectorLINBus()
@@ -201,13 +233,18 @@ def test_stop_handles_shutdown_exception() -> None:
 
 
 def test_rx_loop_dispatches_message_and_handles_callback_error() -> None:
+    """Ensure the RX loop dispatches frames despite callback failures."""
     bus = VectorLINBus()
 
     class OneShotBus:
+        """Bus stub that yields one frame then stops."""
+
         def __init__(self):
+            """Initialize the one-shot receive counter."""
             self.called = 0
 
         def recv(self, timeout):
+            """Return one frame, then signal loop shutdown."""
             self.called += 1
             if self.called == 1:
                 return SimpleNamespace(arbitration_id=0x25, data=[1, 2], timestamp=1.0)
@@ -217,6 +254,7 @@ def test_rx_loop_dispatches_message_and_handles_callback_error() -> None:
     events = []
 
     def bad_cb(_frame):
+        """Raise an RX callback failure for robustness testing."""
         raise RuntimeError("cb failed")
 
     bus.add_rx_callback(bad_cb)

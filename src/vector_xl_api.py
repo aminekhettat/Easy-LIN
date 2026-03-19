@@ -1,15 +1,18 @@
-"""
-Vector XL Driver (vxlapi.dll) ctypes wrapper.
+"""Vector XL Driver ctypes wrapper.
 
 Provides a thin Python layer over the Vector XL API required to operate a
-VN16xx device as a LIN master.  On non-Windows systems or when the driver is
+VN16xx device as a LIN master. On non-Windows systems or when the driver is
 not installed the module degrades gracefully so that the GUI can still run in
-simulation / demo mode.
+simulation or demo mode.
 
-References
-----------
-* Vector XL Driver Library - Programming Guide (xlapi.pdf)
-* Vector VN1610/VN1611/VN1630A/VN1640 User Manual
+:author: Amine Khettat
+:company: BLIND SYSTEMS
+:website: https://www.blindsystems.org
+:version: 0.5.0
+:copyright: Copyright (c) 2026 Amine Khettat
+:license: Easy-LIN Source-Available License Version 1.0. See LICENSE.
+:disclaimer: Provided "AS IS", without warranties or liability, as described
+    in LICENSE.
 """
 
 import ctypes
@@ -69,63 +72,67 @@ XL_CONFIG_MAX_CHANNELS = 64
 
 class XL_LIN_STAT_PARAM(ctypes.Structure):
     """Parameters used to configure a LIN channel."""
+
     _pack_ = 1
     _fields_ = [
-        ("LINMode",    c_uint),   # XL_LIN_MASTER or XL_LIN_SLAVE
-        ("baudrate",   c_int),    # e.g. 19200
-        ("LINVersion", c_uint),   # XL_LIN_VERSION_*
-        ("reserved",   c_uint),
+        ("LINMode", c_uint),  # XL_LIN_MASTER or XL_LIN_SLAVE
+        ("baudrate", c_int),  # e.g. 19200
+        ("LINVersion", c_uint),  # XL_LIN_VERSION_*
+        ("reserved", c_uint),
     ]
 
 
 class XL_LIN_MSG(ctypes.Structure):
     """A LIN message received or to be transmitted."""
+
     _pack_ = 1
     _fields_ = [
-        ("id",       c_ubyte),
-        ("dlc",      c_ubyte),
-        ("flags",    ctypes.c_ushort),
-        ("data",     c_ubyte * 8),
-        ("crc",      c_uint),
-        ("dir",      c_ubyte),
+        ("id", c_ubyte),
+        ("dlc", c_ubyte),
+        ("flags", ctypes.c_ushort),
+        ("data", c_ubyte * 8),
+        ("crc", c_uint),
+        ("dir", c_ubyte),
         ("reserved", c_uint * 3),
     ]
 
 
 class XL_CHANNEL_CONFIG(ctypes.Structure):
     """Per-channel hardware description returned by xlGetDriverConfig."""
+
     _pack_ = 1
     _fields_ = [
-        ("name",                   c_char * (XL_MAX_APPNAME + 1)),
-        ("hwType",                 c_ubyte),
-        ("hwIndex",                c_ubyte),
-        ("hwChannel",              c_ubyte),
-        ("transceiver",            c_uint),
-        ("transceiverState",       c_uint),
+        ("name", c_char * (XL_MAX_APPNAME + 1)),
+        ("hwType", c_ubyte),
+        ("hwIndex", c_ubyte),
+        ("hwChannel", c_ubyte),
+        ("transceiver", c_uint),
+        ("transceiverState", c_uint),
         ("transceiverFeatureMask", c_uint),
-        ("channelIndex",           c_uint),
-        ("channelMask",            ctypes.c_ulonglong),
-        ("channelCapabilities",    c_uint),
+        ("channelIndex", c_uint),
+        ("channelMask", ctypes.c_ulonglong),
+        ("channelCapabilities", c_uint),
         ("channelBusCapabilities", c_uint),
-        ("isOnBus",                c_ubyte),
-        ("busParams",              c_ubyte * 32),
-        ("_reserved",              c_uint * 24),
-        ("channelVersion",         c_uint),
+        ("isOnBus", c_ubyte),
+        ("busParams", c_ubyte * 32),
+        ("_reserved", c_uint * 24),
+        ("channelVersion", c_uint),
         ("channelBusActiveCapabilities", c_uint),
-        ("connectorMode",          c_uint),
-        ("transceiverType",        c_uint),
-        ("_reserved2",             c_uint * 9),
+        ("connectorMode", c_uint),
+        ("transceiverType", c_uint),
+        ("_reserved2", c_uint * 9),
     ]
 
 
 class XL_DRIVER_CONFIG(ctypes.Structure):
     """Global driver configuration, contains all available channels."""
+
     _pack_ = 1
     _fields_ = [
-        ("dllVersion",   c_uint),
+        ("dllVersion", c_uint),
         ("channelCount", c_uint),
-        ("reserved",     c_uint * 10),
-        ("channel",      XL_CHANNEL_CONFIG * XL_CONFIG_MAX_CHANNELS),
+        ("reserved", c_uint * 10),
+        ("channel", XL_CHANNEL_CONFIG * XL_CONFIG_MAX_CHANNELS),
     ]
 
 
@@ -136,16 +143,17 @@ _XL_EVENT_SIZE = 72
 
 class XL_EVENT(ctypes.Structure):
     """Opaque XL event buffer (receives LIN messages and other events)."""
+
     _pack_ = 1
     _fields_ = [
-        ("tag",          c_ubyte),
-        ("chanIndex",    c_ubyte),
-        ("transId",      ctypes.c_ushort),
-        ("portHandle",   ctypes.c_ushort),
-        ("flags",        c_ubyte),
-        ("reserved",     c_ubyte),
-        ("timeStamp",    ctypes.c_ulonglong),
-        ("_raw",         c_ubyte * 52),   # union payload (max ~52 bytes)
+        ("tag", c_ubyte),
+        ("chanIndex", c_ubyte),
+        ("transId", ctypes.c_ushort),
+        ("portHandle", ctypes.c_ushort),
+        ("flags", c_ubyte),
+        ("reserved", c_ubyte),
+        ("timeStamp", ctypes.c_ulonglong),
+        ("_raw", c_ubyte * 52),  # union payload (max ~52 bytes)
     ]
 
     @property
@@ -158,6 +166,7 @@ class XL_EVENT(ctypes.Structure):
 # Driver wrapper
 # ---------------------------------------------------------------------------
 
+
 class VectorXLDriverNotFoundError(RuntimeError):
     """Raised when vxlapi.dll cannot be loaded."""
 
@@ -166,6 +175,7 @@ class VectorXLError(RuntimeError):
     """Raised when a Vector XL API call returns a non-success status."""
 
     def __init__(self, func_name: str, status: int) -> None:
+        """Store the failing API function name and return status."""
         super().__init__(f"{func_name} returned status {status:#x}")
         self.func_name = func_name
         self.status = status
@@ -192,6 +202,7 @@ class VectorXLApi:
     """
 
     def __init__(self) -> None:
+        """Load the Vector XL DLL and configure ctypes prototypes."""
         self._dll = self._load_dll()
         self._setup_prototypes()
 
@@ -201,6 +212,7 @@ class VectorXLApi:
 
     @staticmethod
     def _load_dll() -> ctypes.CDLL:
+        """Load the Vector XL DLL from the current Windows installation."""
         if platform.system() != "Windows":
             raise VectorXLDriverNotFoundError(
                 "Vector XL Driver is only available on Windows."
@@ -219,7 +231,7 @@ class VectorXLApi:
                 r"C:\Program Files\Vector XL Driver Library\bin",
                 r"C:\Program Files (x86)\Vector XL Driver Library\bin",
             ):
-                candidate = fr"{base}\{name}.dll"
+                candidate = rf"{base}\{name}.dll"
                 try:
                     return ctypes.WinDLL(candidate)
                 except OSError:
@@ -231,60 +243,74 @@ class VectorXLApi:
         )
 
     def _setup_prototypes(self) -> None:
+        """Configure ctypes signatures for the Vector XL functions in use."""
         dll = self._dll
 
         def _proto(name: str, restype, *argtypes):
+            """Assign a ctypes return type and argument list to one DLL export."""
             fn = getattr(dll, name)
             fn.restype = restype
             fn.argtypes = list(argtypes)
 
-        _proto("xlOpenDriver",           c_int)
-        _proto("xlCloseDriver",          c_int)
-        _proto("xlGetDriverConfig",      c_int, POINTER(XL_DRIVER_CONFIG))
-        _proto("xlOpenPort",             c_int,
-               POINTER(c_int),           # portHandle out
-               c_char_p,                  # userName
-               ctypes.c_ulonglong,        # accessMask
-               POINTER(ctypes.c_ulonglong),  # permissionMask in/out
-               c_uint,                   # rxQueueSize
-               c_uint,                   # interfaceVersion
-               c_uint)                   # busType
-        _proto("xlClosePort",            c_int, c_int)
-        _proto("xlActivateChannel",      c_int, c_int, ctypes.c_ulonglong, c_uint, c_uint)
-        _proto("xlDeactivateChannel",    c_int, c_int, ctypes.c_ulonglong)
-        _proto("xlLinSetChannelParams",  c_int, c_int, ctypes.c_ulonglong,
-               XL_LIN_STAT_PARAM)
-        _proto("xlLinSetDLC",            c_int, c_int, ctypes.c_ulonglong,
-               c_ubyte * 64)
-        _proto("xlLinSetFrameResponse",  c_int, c_int, ctypes.c_ulonglong,
-               POINTER(XL_LIN_MSG), c_uint)
-        _proto("xlLinSendRequest",       c_int, c_int, ctypes.c_ulonglong,
-               c_ubyte, c_uint)
-        _proto("xlReceive",              c_int, c_int,
-               POINTER(c_uint), POINTER(XL_EVENT))
-        _proto("xlSetNotification",      c_int, c_int, POINTER(ctypes.c_void_p), c_int)
-        _proto("xlGetErrorString",       c_char_p, c_int)
+        _proto("xlOpenDriver", c_int)
+        _proto("xlCloseDriver", c_int)
+        _proto("xlGetDriverConfig", c_int, POINTER(XL_DRIVER_CONFIG))
+        _proto(
+            "xlOpenPort",
+            c_int,
+            POINTER(c_int),  # portHandle out
+            c_char_p,  # userName
+            ctypes.c_ulonglong,  # accessMask
+            POINTER(ctypes.c_ulonglong),  # permissionMask in/out
+            c_uint,  # rxQueueSize
+            c_uint,  # interfaceVersion
+            c_uint,
+        )  # busType
+        _proto("xlClosePort", c_int, c_int)
+        _proto("xlActivateChannel", c_int, c_int, ctypes.c_ulonglong, c_uint, c_uint)
+        _proto("xlDeactivateChannel", c_int, c_int, ctypes.c_ulonglong)
+        _proto(
+            "xlLinSetChannelParams", c_int, c_int, ctypes.c_ulonglong, XL_LIN_STAT_PARAM
+        )
+        _proto("xlLinSetDLC", c_int, c_int, ctypes.c_ulonglong, c_ubyte * 64)
+        _proto(
+            "xlLinSetFrameResponse",
+            c_int,
+            c_int,
+            ctypes.c_ulonglong,
+            POINTER(XL_LIN_MSG),
+            c_uint,
+        )
+        _proto("xlLinSendRequest", c_int, c_int, ctypes.c_ulonglong, c_ubyte, c_uint)
+        _proto("xlReceive", c_int, c_int, POINTER(c_uint), POINTER(XL_EVENT))
+        _proto("xlSetNotification", c_int, c_int, POINTER(ctypes.c_void_p), c_int)
+        _proto("xlGetErrorString", c_char_p, c_int)
 
     # ------------------------------------------------------------------
     # Driver lifecycle
     # ------------------------------------------------------------------
 
     def open_driver(self) -> None:
+        """Open the Vector XL driver library."""
         status = self._dll.xlOpenDriver()
         if status != XL_SUCCESS:
             raise VectorXLError("xlOpenDriver", status)
 
     def close_driver(self) -> None:
+        """Close the Vector XL driver library."""
         self._dll.xlCloseDriver()
 
     def get_driver_config(self) -> XL_DRIVER_CONFIG:
+        """Return the current Vector driver configuration structure."""
         cfg = XL_DRIVER_CONFIG()
         status = self._dll.xlGetDriverConfig(ctypes.byref(cfg))
         if status != XL_SUCCESS:
             raise VectorXLError("xlGetDriverConfig", status)
         return cfg
 
-    def lin_channels(self, cfg: Optional[XL_DRIVER_CONFIG] = None) -> List[XL_CHANNEL_CONFIG]:
+    def lin_channels(
+        self, cfg: Optional[XL_DRIVER_CONFIG] = None
+    ) -> List[XL_CHANNEL_CONFIG]:
         """Return all channels that have LIN capability."""
         if cfg is None:
             cfg = self.get_driver_config()
@@ -326,6 +352,7 @@ class VectorXLApi:
         return port_handle.value, perm_mask.value
 
     def close_port(self, port_handle: int) -> None:
+        """Close a previously opened Vector port handle."""
         self._dll.xlClosePort(port_handle)
 
     # ------------------------------------------------------------------
@@ -399,6 +426,7 @@ class VectorXLApi:
     # ------------------------------------------------------------------
 
     def activate_channel(self, port_handle: int, access_mask: int) -> None:
+        """Activate a LIN-capable channel for communication."""
         status = self._dll.xlActivateChannel(
             port_handle,
             ctypes.c_ulonglong(access_mask),
@@ -409,6 +437,7 @@ class VectorXLApi:
             raise VectorXLError("xlActivateChannel", status)
 
     def deactivate_channel(self, port_handle: int, access_mask: int) -> None:
+        """Deactivate a previously activated channel."""
         self._dll.xlDeactivateChannel(port_handle, ctypes.c_ulonglong(access_mask))
 
     # ------------------------------------------------------------------
@@ -459,5 +488,6 @@ class VectorXLApi:
     # ------------------------------------------------------------------
 
     def error_string(self, status: int) -> str:
+        """Return the Vector driver error string for a status code."""
         raw = self._dll.xlGetErrorString(status)
         return raw.decode("ascii", errors="replace") if raw else f"status={status:#x}"

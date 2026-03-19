@@ -1,13 +1,16 @@
-"""
-High-level LIN master built on top of :mod:`src.vector_xl_api`.
+"""High-level LIN master built on top of :mod:`src.vector_xl_api`.
 
-Responsibilities
-----------------
-* Connect / disconnect to Vector VN16xx hardware.
-* Apply an LDF file's baud-rate and frame DLC table to the channel.
-* Send frame headers on demand (master request).
-* Execute a schedule table in a background thread.
-* Deliver received LIN messages via a callback.
+Responsibilities include hardware lifecycle management, LIN channel setup,
+frame transmission, schedule execution, and receive callback dispatch.
+
+:author: Amine Khettat
+:company: BLIND SYSTEMS
+:website: https://www.blindsystems.org
+:version: 0.5.0
+:copyright: Copyright (c) 2026 Amine Khettat
+:license: Easy-LIN Source-Available License Version 1.0. See LICENSE.
+:disclaimer: Provided "AS IS", without warranties or liability, as described
+    in LICENSE.
 """
 
 import logging
@@ -35,6 +38,7 @@ _TAG_LIN_MSG = 14
 # Received frame DTO
 # ---------------------------------------------------------------------------
 
+
 class ReceivedFrame:
     """Represents one LIN frame received from the bus."""
 
@@ -47,12 +51,14 @@ class ReceivedFrame:
         timestamp_ns: int,
         crc_error: bool = False,
     ) -> None:
+        """Store the parsed contents of one received LIN frame."""
         self.frame_id = frame_id
         self.data = data
         self.timestamp_ns = timestamp_ns
         self.crc_error = crc_error
 
     def __repr__(self) -> str:
+        """Return a compact diagnostic representation of the received frame."""
         hex_data = " ".join(f"{b:02X}" for b in self.data)
         return (
             f"ReceivedFrame(id=0x{self.frame_id:02X}, "
@@ -64,6 +70,7 @@ class ReceivedFrame:
 # ---------------------------------------------------------------------------
 # LIN Master
 # ---------------------------------------------------------------------------
+
 
 class LINMaster:
     """
@@ -84,6 +91,7 @@ class LINMaster:
         on_frame_received: Optional[Callable[[ReceivedFrame], None]] = None,
         on_error: Optional[Callable[[str], None]] = None,
     ) -> None:
+        """Initialize the master controller and its background-thread state."""
         self._on_frame_received = on_frame_received
         self._on_error = on_error
 
@@ -105,10 +113,12 @@ class LINMaster:
 
     @property
     def is_connected(self) -> bool:
+        """Return ``True`` when hardware access is currently active."""
         return self._connected
 
     @property
     def ldf(self) -> Optional[LDFFile]:
+        """Return the currently loaded LDF associated with the connection."""
         return self._ldf
 
     # ------------------------------------------------------------------
@@ -171,9 +181,7 @@ class LINMaster:
         self._api.open_driver()
         self._access_mask = channel_mask
 
-        port_handle, perm_mask = self._api.open_port(
-            app_name, channel_mask
-        )
+        port_handle, perm_mask = self._api.open_port(app_name, channel_mask)
         self._port_handle = port_handle
 
         if perm_mask == 0:

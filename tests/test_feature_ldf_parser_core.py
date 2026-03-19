@@ -107,6 +107,7 @@ Composite { Ignore { X ; } }
 
 
 def test_parse_string_populates_all_sections() -> None:
+    """Ensure parsing from a string populates all supported LDF sections."""
     ldf = parse_ldf_string(SAMPLE_LDF)
 
     assert ldf.protocol_version == "2.1"
@@ -142,6 +143,7 @@ def test_parse_string_populates_all_sections() -> None:
 
 
 def test_parse_file_roundtrip(tmp_path) -> None:
+    """Ensure parsing from a file path preserves the expected frame data."""
     path = tmp_path / "network.ldf"
     path.write_text(SAMPLE_LDF, encoding="utf-8")
 
@@ -152,6 +154,7 @@ def test_parse_file_roundtrip(tmp_path) -> None:
 
 
 def test_parser_handles_comments_and_negative_values() -> None:
+    """Ensure comments and signed numeric encoding fields are accepted."""
     content = """
     LIN_description_file ; // top level
     /* block comment */
@@ -175,6 +178,7 @@ def test_parser_handles_comments_and_negative_values() -> None:
 
 
 def test_parser_handles_unknown_tokens_without_crash() -> None:
+    """Ensure unknown sections do not crash the tolerant parser."""
     content = """
     LIN_description_file ;
     LIN_protocol_version = "2.0" ;
@@ -185,12 +189,14 @@ def test_parser_handles_unknown_tokens_without_crash() -> None:
 
 
 def test_parser_raises_ldf_parse_error_for_invalid_syntax() -> None:
+    """Ensure invalid syntax is wrapped in an explicit parse error."""
     broken = "LIN_protocol_version = 2.0 ; Nodes { Master: A, 5 ms ; }"
     with pytest.raises(LDFParseError):
         parse_ldf_string(broken)
 
 
 def test_parser_supports_negative_and_float_numbers() -> None:
+    """Ensure tolerant numeric parsing handles signed and float-like tokens."""
     content = """
     LIN_description_file ;
     Signals {
@@ -226,11 +232,13 @@ def test_parser_supports_negative_and_float_numbers() -> None:
 
 
 def test_parser_wraps_unexpected_errors() -> None:
+    """Ensure unexpected parser failures are surfaced as parse errors."""
     with pytest.raises(LDFParseError):
         parse_ldf_string(None)  # type: ignore[arg-type]
 
 
 def test_parser_invalid_identifier_raises() -> None:
+    """Ensure invalid identifiers are rejected."""
     content = """
     LIN_description_file ;
     Signals {
@@ -239,3 +247,88 @@ def test_parser_invalid_identifier_raises() -> None:
     """
     with pytest.raises(LDFParseError):
         parse_ldf_string(content)
+
+
+def test_parser_accepts_physical_value_without_unit() -> None:
+    """Ensure physical value entries remain valid when the unit is omitted."""
+    content = """
+    LIN_description_file ;
+    Signal_encoding_types {
+      E {
+        physical_value, 0, 14, 1, 0 ;
+        logical_value, 15, "Invalid" ;
+      }
+    }
+    """
+    ldf = parse_ldf_string(content)
+
+    assert len(ldf.encoding_types) == 1
+    assert ldf.encoding_types[0].physical_ranges[0].unit == ""
+
+
+def test_parser_skips_diagnostic_frames_sections() -> None:
+    """Ensure diagnostic frame sections are ignored by the main frame parser."""
+    content = """
+    LIN_description_file ;
+    Nodes { Master: M, 5 ms, 0.1 ms ; Slaves: S ; }
+    Signals { A: 8, 0, M, S ; }
+    Frames {
+      F1: 0x10, M, 1 { A, 0 ; }
+      Diagnostic_frames {
+        MasterReq: 0x3C { A, 0 ; }
+      }
+    }
+    Diagnostic_frames {
+      MasterReq: 0x3C { A, 0 ; }
+    }
+    """
+    ldf = parse_ldf_string(content)
+
+    assert len(ldf.frames) == 1
+    assert ldf.frames[0].name == "F1"
+
+
+def test_parser_accepts_redundant_nested_frame_header() -> None:
+    """Ensure nested repeated frame headers are tolerated."""
+    content = """
+    LIN_description_file ;
+    Nodes { Master: M, 5 ms, 0.1 ms ; Slaves: S ; }
+    Signals {
+      S1: 8, 0, M, S ;
+      S2: 8, 0, M, S ;
+    }
+    Frames {
+      Outer: 0x20, M, 2 {
+        Outer: 0x20, M, 2 {
+          S1, 0 ;
+          S2, 8 ;
+        }
+      }
+    }
+    """
+    ldf = parse_ldf_string(content)
+
+    frame = ldf.frame_by_name("Outer")
+    assert frame is not None
+    assert len(frame.signals) == 2
+
+
+def test_parser_accepts_frames_followed_by_section_without_closing_brace() -> None:
+    """Ensure the parser tolerates a missing closing brace before the next section."""
+    content = """
+    LIN_description_file ;
+    Nodes { Master: M, 5 ms, 0.1 ms ; Slaves: S ; }
+    Signals { A: 8, 0, M, S ; }
+    Frames {
+      F1: 0x10, M, 1 { A, 0 ; }
+      Node_attributes {
+        S {
+          LIN_protocol = "2.1" ;
+        }
+      }
+    """
+    ldf = parse_ldf_string(content)
+
+    assert ldf.frame_by_name("F1") is not None
+    assert len(ldf.node_attributes) == 1
+    assert ldf.node_attributes[0].node_name == "S"

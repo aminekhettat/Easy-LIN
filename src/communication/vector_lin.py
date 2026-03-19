@@ -1,9 +1,17 @@
-"""
-Vector CAN/LIN communication module.
+"""Vector CAN/LIN communication module.
 
-Wraps python-can with the Vector XL-driver backend to provide a clean LIN
-master interface.  Falls back to a software simulation mode when Vector
+Wraps :mod:`python-can` with the Vector XL-driver backend to provide a clean
+LIN master interface. Falls back to a software simulation mode when Vector
 hardware is not present so the application remains usable without hardware.
+
+:author: Amine Khettat
+:company: BLIND SYSTEMS
+:website: https://www.blindsystems.org
+:version: 0.5.0
+:copyright: Copyright (c) 2026 Amine Khettat
+:license: Easy-LIN Source-Available License Version 1.0. See LICENSE.
+:disclaimer: Provided "AS IS", without warranties or liability, as described
+    in LICENSE.
 """
 
 from __future__ import annotations
@@ -50,13 +58,16 @@ class LINFrame:
 
     @property
     def frame_id_hex(self) -> str:
+        """Return the frame identifier formatted as hexadecimal text."""
         return f"0x{self.frame_id:02X}"
 
     @property
     def data_hex(self) -> str:
+        """Return the payload bytes formatted as hexadecimal text."""
         return " ".join(f"{b:02X}" for b in self.data)
 
     def __str__(self) -> str:
+        """Return a short human-readable representation of the frame."""
         return f"[{self.direction}] ID={self.frame_id_hex} Data=[{self.data_hex}]"
 
 
@@ -74,6 +85,7 @@ class _SimBus:
     """
 
     def __init__(self) -> None:
+        """Initialize the in-process simulation bus state."""
         self._running = False
         self._rx_callbacks: list[Callable[[LINFrame], None]] = []
         self._lock = threading.Lock()
@@ -83,6 +95,7 @@ class _SimBus:
         """Simulate sending a LIN frame by echoing it as RX after 5 ms."""
 
         def _echo():
+            """Echo the transmitted frame back to registered RX callbacks."""
             time.sleep(0.005)
             rx = LINFrame(
                 frame_id=frame.frame_id,
@@ -99,10 +112,12 @@ class _SimBus:
         threading.Thread(target=_echo, daemon=True).start()
 
     def add_rx_callback(self, callback: Callable[[LINFrame], None]) -> None:
+        """Register a simulation receive callback."""
         with self._lock:
             self._rx_callbacks.append(callback)
 
     def shutdown(self) -> None:
+        """Stop the simulation bus."""
         self._running = False
         logger.info("LIN simulation bus shut down.")
 
@@ -134,6 +149,7 @@ class VectorLINBus:
         bitrate: int = 19200,
         app_name: str = "Easy-LIN",
     ) -> None:
+        """Initialize a Vector-backed or simulated LIN bus wrapper."""
         self.channel = channel
         self.bitrate = bitrate
         self.app_name = app_name
@@ -157,6 +173,7 @@ class VectorLINBus:
 
     @property
     def is_connected(self) -> bool:
+        """Return ``True`` when the bus has been started."""
         return self._running
 
     @staticmethod
@@ -254,6 +271,7 @@ class VectorLINBus:
     # ------------------------------------------------------------------
 
     def _try_open_vector(self) -> None:
+        """Open the Vector backend or fall back to the simulation bus."""
         if not _CAN_AVAILABLE:
             logger.warning(
                 "python-can is not installed – switching to simulation mode."
@@ -309,6 +327,7 @@ class VectorLINBus:
                     logger.exception("Error in RX loop")
 
     def _send_via_can(self, frame: LINFrame) -> None:
+        """Send a frame through the active :mod:`python-can` bus."""
         if self._bus is None:
             return
         try:
@@ -322,6 +341,7 @@ class VectorLINBus:
             raise LINError(f"Send failed: {exc}") from exc
 
     def _notify_rx(self, frame: LINFrame) -> None:
+        """Dispatch one received frame to all registered RX callbacks."""
         with self._lock:
             callbacks = list(self._rx_callbacks)
         for cb in callbacks:
@@ -331,6 +351,7 @@ class VectorLINBus:
                 logger.exception("Error in RX callback")
 
     def _notify_tx(self, frame: LINFrame) -> None:
+        """Dispatch one transmitted frame to all registered TX callbacks."""
         with self._lock:
             callbacks = list(self._tx_callbacks)
         for cb in callbacks:

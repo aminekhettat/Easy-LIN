@@ -1,10 +1,16 @@
-"""
-LIN Communication Panel.
+"""LIN communication panel.
 
-Provides UI controls for:
-  • connecting / disconnecting from a Vector LIN channel
-  • sending arbitrary LIN frames
-  • monitoring received / transmitted frames in a scrollable log
+Provides UI controls for connecting to a LIN channel, sending frames, and
+monitoring received or transmitted traffic.
+
+:author: Amine Khettat
+:company: BLIND SYSTEMS
+:website: https://www.blindsystems.org
+:version: 0.5.0
+:copyright: Copyright (c) 2026 Amine Khettat
+:license: Easy-LIN Source-Available License Version 1.0. See LICENSE.
+:disclaimer: Provided "AS IS", without warranties or liability, as described
+        in LICENSE.
 """
 
 from __future__ import annotations
@@ -29,6 +35,7 @@ class CommunicationPanel(ttk.LabelFrame):
     """LIN communication control and monitor panel."""
 
     def __init__(self, parent: tk.Widget, **kwargs) -> None:
+        """Initialize the communication panel state and child widgets."""
         kwargs.setdefault("text", "LIN Communication  (Vector CAN)")
         super().__init__(parent, **kwargs)
         self._ldf: Optional[LDFFile] = None
@@ -56,6 +63,7 @@ class CommunicationPanel(ttk.LabelFrame):
     # ------------------------------------------------------------------
 
     def _build_ui(self) -> None:
+        """Create the connection bar, log table, and send controls."""
         self.columnconfigure(0, weight=1)
         self.rowconfigure(1, weight=1)
 
@@ -64,6 +72,7 @@ class CommunicationPanel(ttk.LabelFrame):
         self._build_send_bar()
 
     def _build_connection_bar(self) -> None:
+        """Create the connection controls and status area."""
         bar = ttk.Frame(self)
         bar.grid(row=0, column=0, sticky="ew", padx=6, pady=(6, 2))
 
@@ -104,6 +113,7 @@ class CommunicationPanel(ttk.LabelFrame):
         )
 
     def _build_log_table(self) -> None:
+        """Create the scrolling traffic log table."""
         frame = ttk.Frame(self)
         frame.grid(row=1, column=0, sticky="nsew", padx=6, pady=2)
         frame.columnconfigure(0, weight=1)
@@ -135,6 +145,7 @@ class CommunicationPanel(ttk.LabelFrame):
         self._log_tree.tag_configure("ERR", foreground="#c0392b")
 
     def _build_send_bar(self) -> None:
+        """Create the manual frame transmission controls."""
         bar = ttk.Frame(self)
         bar.grid(row=2, column=0, sticky="ew", padx=6, pady=(2, 6))
 
@@ -168,6 +179,7 @@ class CommunicationPanel(ttk.LabelFrame):
     # ------------------------------------------------------------------
 
     def _refresh_frame_combo(self) -> None:
+        """Populate the frame dropdown from the currently loaded LDF."""
         names = []
         if self._ldf:
             names = sorted(
@@ -176,6 +188,7 @@ class CommunicationPanel(ttk.LabelFrame):
         self._send_frame_combo["values"] = names
 
     def _frame_name_for_id(self, frame_id: int) -> str:
+        """Resolve a frame identifier to its LDF name when available."""
         if self._ldf:
             for frm in self._ldf.frames:
                 if frm.frame_id == frame_id:
@@ -187,6 +200,7 @@ class CommunicationPanel(ttk.LabelFrame):
     # ------------------------------------------------------------------
 
     def _on_connect(self) -> None:
+        """Connect to the selected Vector or simulation transport."""
         channel = self._channel_var.get()
         bitrate = int(self._bitrate_var.get())
         self._bus = VectorLINBus(channel=channel, bitrate=bitrate)
@@ -209,6 +223,7 @@ class CommunicationPanel(ttk.LabelFrame):
             self._status_label.config(foreground="#117a65")
 
     def _on_disconnect(self) -> None:
+        """Disconnect the active transport and reset the widget state."""
         if self._bus:
             self._bus.stop()
             self._bus = None
@@ -236,6 +251,7 @@ class CommunicationPanel(ttk.LabelFrame):
                 self._send_data_var.set(" ".join(["00"] * frame.frame_size))
 
     def _on_send(self) -> None:
+        """Parse user-entered frame data and transmit it on the bus."""
         if not self._bus or not self._bus.is_connected:
             messagebox.showwarning("Not connected", "Please connect first.")
             return
@@ -252,9 +268,11 @@ class CommunicationPanel(ttk.LabelFrame):
             messagebox.showerror("Send error", str(exc))
 
     def _on_rx_frame(self, frame: LINFrame) -> None:
+        """Handle a received frame notification."""
         self._log_frame(frame)
 
     def _on_tx_frame(self, frame: LINFrame) -> None:
+        """Handle a transmitted frame notification."""
         self._log_frame(frame)
 
     # ------------------------------------------------------------------
@@ -266,6 +284,7 @@ class CommunicationPanel(ttk.LabelFrame):
         self.after(0, self._append_log_row, frame)
 
     def _append_log_row(self, frame: LINFrame) -> None:
+        """Insert one formatted frame row into the visible traffic log."""
         with self._log_lock:
             self._row_count += 1
             row_num = self._row_count
@@ -295,6 +314,7 @@ class CommunicationPanel(ttk.LabelFrame):
         self._log_tree.yview_moveto(1.0)
 
     def _clear_log(self) -> None:
+        """Remove all rows from the traffic log and reset numbering."""
         self._log_tree.delete(*self._log_tree.get_children())
         with self._log_lock:
             self._row_count = 0

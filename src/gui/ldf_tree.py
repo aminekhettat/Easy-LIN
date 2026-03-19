@@ -1,9 +1,17 @@
-"""
-LDF Tree View widget.
+"""LDF tree view widget.
 
 Displays the contents of an :class:`~src.ldf_parser.LDFFile` in a
-hierarchical ``ttk.Treeview``.  Selecting a node fires the
-``on_select`` callback with a dict describing the selected item.
+hierarchical ``ttk.Treeview``. Selecting a node fires the ``on_select``
+callback with a dict describing the selected item.
+
+:author: Amine Khettat
+:company: BLIND SYSTEMS
+:website: https://www.blindsystems.org
+:version: 0.5.0
+:copyright: Copyright (c) 2026 Amine Khettat
+:license: Easy-LIN Source-Available License Version 1.0. See LICENSE.
+:disclaimer: Provided "AS IS", without warranties or liability, as described
+    in LICENSE.
 """
 
 from __future__ import annotations
@@ -25,6 +33,7 @@ class LDFTreeView(ttk.Frame):
         on_select: Optional[Callable[[dict], None]] = None,
         **kwargs,
     ) -> None:
+        """Initialize the tree view and optional selection callback."""
         super().__init__(parent, **kwargs)
         self._on_select = on_select
         self._ldf: Optional[LDFFile] = None
@@ -41,6 +50,7 @@ class LDFTreeView(ttk.Frame):
         self._populate(ldf)
 
     def clear(self) -> None:
+        """Remove every tree item and forget the current LDF reference."""
         self._ldf = None
         self._tree.delete(*self._tree.get_children())
 
@@ -53,6 +63,7 @@ class LDFTreeView(ttk.Frame):
     # ------------------------------------------------------------------
 
     def _build_ui(self) -> None:
+        """Create the tree widget and its scrollbars."""
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
 
@@ -92,6 +103,7 @@ class LDFTreeView(ttk.Frame):
         tag: str = "",
         open_: bool = False,
     ) -> str:
+        """Insert one item into the tree widget."""
         return self._tree.insert(
             parent,
             "end",
@@ -102,6 +114,7 @@ class LDFTreeView(ttk.Frame):
         )
 
     def _populate(self, ldf: LDFFile) -> None:
+        """Render presenter-provided nodes into the tree widget."""
         tree = self._tree
         tree.tag_configure("section", foreground="#123a59")
         tree.tag_configure("leaf", foreground="#1d2731")
@@ -124,6 +137,7 @@ class LDFTreeView(ttk.Frame):
     # ------------------------------------------------------------------
 
     def _on_tree_select(self, _event: tk.Event) -> None:
+        """Forward the selected tree item to the external callback."""
         if not self._on_select:
             return
         sel = self._tree.selection()

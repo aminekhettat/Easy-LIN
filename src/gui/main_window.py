@@ -1,20 +1,16 @@
-"""
-Easy-LIN main application window.
+"""Easy-LIN main application window.
 
-Layout
-------
-┌──────────────────────────────────────────────────────┐
-│  Menu bar                                            │
-├────────────────┬─────────────────────────────────────┤
-│                │                                     │
-│  LDF Tree View │      Detail Viewer                  │
-│  (left pane)   │      (right pane)                   │
-│                │                                     │
-├────────────────┴─────────────────────────────────────┤
-│  Communication Panel (LIN bus monitor + send)        │
-├──────────────────────────────────────────────────────┤
-│  Status bar                                          │
-└──────────────────────────────────────────────────────┘
+This Tk window hosts the accessible tree view, narrated detail panel, LIN
+communication panel, and status bar used by the default Easy-LIN frontend.
+
+:author: Amine Khettat
+:company: BLIND SYSTEMS
+:website: https://www.blindsystems.org
+:version: 0.5.0
+:copyright: Copyright (c) 2026 Amine Khettat
+:license: Easy-LIN Source-Available License Version 1.0. See LICENSE.
+:disclaimer: Provided "AS IS", without warranties or liability, as described
+    in LICENSE.
 """
 
 from __future__ import annotations
@@ -46,6 +42,7 @@ class MainWindow(tk.Tk):
     """The top-level application window."""
 
     def __init__(self) -> None:
+        """Initialize the main window and its child widgets."""
         super().__init__()
         self.title(_APP_TITLE)
         self.geometry("1200x780")
@@ -67,6 +64,7 @@ class MainWindow(tk.Tk):
     # ------------------------------------------------------------------
 
     def _apply_theme(self) -> None:
+        """Apply the base ttk theme used by the Tk frontend."""
         style = ttk.Style(self)
         # Use 'clam' as a clean cross-platform base
         available = style.theme_names()
@@ -83,6 +81,7 @@ class MainWindow(tk.Tk):
     # ------------------------------------------------------------------
 
     def _build_menu(self) -> None:
+        """Create application menus and keyboard shortcuts."""
         menubar = tk.Menu(self)
 
         # ── File ─────────────────────────────────────────────────────
@@ -130,6 +129,7 @@ class MainWindow(tk.Tk):
     # ------------------------------------------------------------------
 
     def _build_layout(self) -> None:
+        """Create the main paned layout for navigation and communication."""
         # ── Outer vertical paned window (top area / comm panel) ───────
         outer_pane = ttk.PanedWindow(self, orient="vertical")
         outer_pane.pack(fill="both", expand=True, padx=4, pady=4)
@@ -154,6 +154,7 @@ class MainWindow(tk.Tk):
         outer_pane.add(self._comm_panel, weight=1)
 
     def _build_status_bar(self) -> None:
+        """Create the status bar shown at the bottom of the window."""
         bar = ttk.Frame(self, relief="sunken")
         bar.pack(side="bottom", fill="x")
         self._status_var = tk.StringVar()
@@ -166,6 +167,7 @@ class MainWindow(tk.Tk):
     # ------------------------------------------------------------------
 
     def _open_ldf(self) -> None:
+        """Prompt for an LDF file and load it into the application."""
         path = filedialog.askopenfilename(
             title="Open LDF file",
             filetypes=[("LIN Description Files", "*.ldf"), ("All files", "*.*")],
@@ -186,6 +188,7 @@ class MainWindow(tk.Tk):
             messagebox.showerror("Parse error", f"Could not parse LDF file:\n{exc}")
 
     def _close_ldf(self) -> None:
+        """Unload the current LDF from all visible widgets."""
         self._ldf = None
         self._tree_view.clear()
         self._detail_viewer.clear()
@@ -193,6 +196,7 @@ class MainWindow(tk.Tk):
         self._set_status("LDF file closed.")
 
     def _load_ldf(self, ldf: LDFFile) -> None:
+        """Populate all UI panels from a parsed LDF object."""
         self._ldf = ldf
         self._tree_view.load(ldf)
         self._detail_viewer.set_ldf(ldf)
@@ -205,6 +209,7 @@ class MainWindow(tk.Tk):
     # ------------------------------------------------------------------
 
     def _on_tree_select(self, info: dict) -> None:
+        """Update the details panel and status line for the selected node."""
         self._detail_viewer.show(info)
         if self._ldf and info.get("key"):
             line = describe_key(self._ldf, info["key"]).splitlines()[0]
@@ -216,21 +221,25 @@ class MainWindow(tk.Tk):
     # ------------------------------------------------------------------
 
     def _expand_all(self) -> None:
+        """Expand every node in the structure tree."""
         tree = self._tree_view._tree
         for item in tree.get_children():
             self._expand_item(tree, item)
 
     def _expand_item(self, tree: ttk.Treeview, item: str) -> None:
+        """Recursively expand one tree item and all its children."""
         tree.item(item, open=True)
         for child in tree.get_children(item):
             self._expand_item(tree, child)
 
     def _collapse_all(self) -> None:
+        """Collapse every node in the structure tree."""
         tree = self._tree_view._tree
         for item in tree.get_children():
             self._collapse_item(tree, item)
 
     def _collapse_item(self, tree: ttk.Treeview, item: str) -> None:
+        """Recursively collapse one tree item and all its children."""
         tree.item(item, open=False)
         for child in tree.get_children(item):
             self._collapse_item(tree, child)
@@ -240,12 +249,15 @@ class MainWindow(tk.Tk):
     # ------------------------------------------------------------------
 
     def _set_status(self, msg: str) -> None:
+        """Replace the current status-bar message."""
         self._status_var.set(msg)
 
     def _show_about(self) -> None:
+        """Display the application about dialog."""
         messagebox.showinfo("About Easy-LIN", _ABOUT_TEXT)
 
     def _show_accessibility_help(self) -> None:
+        """Display keyboard shortcuts and accessibility guidance."""
         messagebox.showinfo(
             "Accessibility Help",
             "Easy-LIN Accessibility Shortcuts\n\n"
@@ -258,5 +270,6 @@ class MainWindow(tk.Tk):
         )
 
     def _on_close(self) -> None:
+        """Stop communication threads and close the application window."""
         self._comm_panel.stop()
         self.destroy()

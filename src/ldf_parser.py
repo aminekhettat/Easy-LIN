@@ -1,8 +1,17 @@
-"""
-LDF (LIN Description File) parser.
+"""Primary Easy-LIN LDF parser.
 
-Parses LDF files conforming to LIN specification versions 1.3, 2.0, 2.1 and 2.2.
-Produces structured data objects that describe the entire LIN network.
+Parses LDF files conforming to LIN specification versions 1.3, 2.0, 2.1, and
+2.2, and produces structured data objects that describe the entire LIN
+network.
+
+:author: Amine Khettat
+:company: BLIND SYSTEMS
+:website: https://www.blindsystems.org
+:version: 0.5.0
+:copyright: Copyright (c) 2026 Amine Khettat
+:license: Easy-LIN Source-Available License Version 1.0. See LICENSE.
+:disclaimer: Provided "AS IS", without warranties or liability, as described
+    in LICENSE.
 """
 
 import re
@@ -163,12 +172,15 @@ class LDFFile:
         self._frames_by_id = {f.frame_id: f for f in self.frames}
 
     def signal(self, name: str) -> Optional[LDFSignal]:
+        """Return the signal with the given name, if it exists."""
         return self._signals_by_name.get(name)
 
     def frame_by_name(self, name: str) -> Optional[LDFFrame]:
+        """Return the frame with the given name, if it exists."""
         return self._frames_by_name.get(name)
 
     def frame_by_id(self, frame_id: int) -> Optional[LDFFrame]:
+        """Return the frame with the given identifier, if it exists."""
         return self._frames_by_id.get(frame_id)
 
 
@@ -196,6 +208,7 @@ def _remove_comments(text: str) -> str:
 
 
 def _tokenize(text: str) -> List[str]:
+    """Tokenize LDF source text after comment removal."""
     return _TOKEN_RE.findall(_remove_comments(text))
 
 
@@ -208,22 +221,26 @@ class _Parser:
     """Token-stream parser for LDF files."""
 
     def __init__(self, tokens: List[str]) -> None:
+        """Initialize the parser with a flat token sequence."""
         self._tokens = tokens
         self._pos = 0
 
     # --- low-level helpers ---------------------------------------------------
 
     def _peek(self) -> Optional[str]:
+        """Return the current token without consuming it."""
         if self._pos < len(self._tokens):
             return self._tokens[self._pos]
         return None
 
     def _consume(self) -> str:
+        """Consume and return the current token."""
         tok = self._tokens[self._pos]
         self._pos += 1
         return tok
 
     def _expect(self, value: str) -> str:
+        """Consume the next token and verify its exact value."""
         tok = self._consume()
         if tok != value:
             raise LDFParseError(
@@ -232,9 +249,11 @@ class _Parser:
         return tok
 
     def _expect_semi(self) -> None:
+        """Consume the statement terminator token."""
         self._expect(";")
 
     def _expect_identifier(self) -> str:
+        """Consume and validate one identifier token."""
         tok = self._consume()
         if not re.match(r"^[A-Za-z_][A-Za-z0-9_.]*$", tok):
             raise LDFParseError(f"Expected identifier, got '{tok}'")
@@ -271,10 +290,12 @@ class _Parser:
 
     @staticmethod
     def _parse_float(tok: str) -> float:
+        """Parse a floating-point token."""
         return float(tok)
 
     @staticmethod
     def _strip_quotes(tok: str) -> str:
+        """Remove surrounding double quotes from a token when present."""
         if tok.startswith('"') and tok.endswith('"'):
             return tok[1:-1]
         return tok
@@ -282,6 +303,7 @@ class _Parser:
     # --- top-level parse -----------------------------------------------------
 
     def parse(self) -> LDFFile:
+        """Parse the token stream into an :class:`LDFFile` object."""
         ldf = LDFFile()
         # First token should be 'LIN_description_file'
         if self._peek() == "LIN_description_file":
@@ -322,6 +344,9 @@ class _Parser:
             elif tok == "Frames":
                 self._consume()
                 ldf.frames = self._parse_frames()
+            elif tok == "Diagnostic_frames":
+                self._consume()
+                self._skip_block()
             elif tok == "Sporadic_frames":
                 self._consume()
                 self._skip_block()
@@ -359,6 +384,7 @@ class _Parser:
     # --- section parsers -----------------------------------------------------
 
     def _parse_nodes(self) -> LDFNodes:
+        """Parse the ``Nodes`` section."""
         self._expect("{")
         self._expect("Master")
         self._expect(":")
@@ -390,6 +416,7 @@ class _Parser:
         return LDFNodes(master=master, slaves=slaves)
 
     def _parse_signals(self) -> List[LDFSignal]:
+        """Parse the ``Signals`` section."""
         signals: List[LDFSignal] = []
         self._expect("{")
         while self._peek() != "}":
@@ -428,12 +455,33 @@ class _Parser:
         return signals
 
     def _parse_frames(self) -> List[LDFFrame]:
+        """Parse the ``Frames`` section."""
         frames: List[LDFFrame] = []
+        known_sections = {
+            "Nodes",
+            "Signals",
+            "Frames",
+            "Diagnostic_frames",
+            "Sporadic_frames",
+            "Event_triggered_frames",
+            "Schedule_tables",
+            "Signal_groups",
+            "Signal_encoding_types",
+            "Signal_representation",
+            "Node_attributes",
+            "Node_composition",
+            "Composite",
+        }
         self._expect("{")
         while self._peek() != "}":
             if self._peek() is None:  # pragma: no cover - defensive EOF guard
                 break
             name = self._expect_identifier()
+            if name in known_sections and self._peek() == "{":
+                # Some vendor LDFs omit the final '}' for Frames and jump directly
+                # to the next top-level section.
+                self._pos -= 1
+                break
             self._expect(":")
             frame_id = self._consume_number()
             self._expect(",")
@@ -446,6 +494,17 @@ class _Parser:
                 if self._peek() is None:  # pragma: no cover - defensive EOF guard
                     break
                 sig_name = self._expect_identifier()
+                if self._peek() == ":":
+                    # Some vendor LDF files repeat a full frame header inside a frame block.
+                    # Tolerate and descend into that nested signal block.
+                    self._consume()
+                    _ = self._consume_number()
+                    self._expect(",")
+                    _ = self._expect_identifier()
+                    self._expect(",")
+                    _ = self._consume_number()
+                    self._expect("{")
+                    continue
                 self._expect(",")
                 offset = self._consume_number()
                 self._expect_semi()
@@ -460,10 +519,12 @@ class _Parser:
                     signals=sig_refs,
                 )
             )
-        self._expect("}")
+        if self._peek() == "}":
+            self._expect("}")
         return frames
 
     def _parse_schedule_tables(self) -> List[LDFScheduleTable]:
+        """Parse the ``Schedule_tables`` section."""
         tables: List[LDFScheduleTable] = []
         self._expect("{")
         while self._peek() != "}":
@@ -492,6 +553,7 @@ class _Parser:
         return tables
 
     def _parse_encoding_types(self) -> List[LDFEncodingType]:
+        """Parse the ``Signal_encoding_types`` section."""
         types: List[LDFEncodingType] = []
         self._expect("{")
         while self._peek() != "}":
@@ -522,8 +584,10 @@ class _Parser:
                     scale = self._consume_float()
                     self._expect(",")
                     offset = self._consume_float()
-                    self._expect(",")
-                    unit = self._strip_quotes(self._consume())
+                    unit = ""
+                    if self._peek() == ",":
+                        self._consume()
+                        unit = self._strip_quotes(self._consume())
                     self._expect_semi()
                     enc.physical_ranges.append(
                         LDFPhysicalRange(
@@ -552,6 +616,7 @@ class _Parser:
         return types
 
     def _parse_signal_representations(self) -> List[LDFSignalRepresentation]:
+        """Parse the ``Signal_representation`` section."""
         reps: List[LDFSignalRepresentation] = []
         self._expect("{")
         while self._peek() != "}":
@@ -571,6 +636,7 @@ class _Parser:
         return reps
 
     def _parse_node_attributes(self) -> List[LDFNodeAttributes]:
+        """Parse the ``Node_attributes`` section."""
         attrs: List[LDFNodeAttributes] = []
         self._expect("{")
         while self._peek() != "}":

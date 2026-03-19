@@ -1,18 +1,31 @@
-"""
-LDF Viewer widget.
+"""LDF viewer widget for the preserved PyQt frontend.
 
-Displays the parsed content of an LDF file across multiple sub-tabs:
-  - Overview   : protocol metadata and node topology
-  - Signals    : full signal table
-  - Frames     : frame definitions with embedded signals
-  - Schedules  : schedule tables (interactive execution)
-  - Encodings  : signal encoding / representation types
+Displays the parsed content of an LDF file across multiple sub-tabs covering
+protocol metadata, signals, frames, schedules, and encodings.
+
+:author: Amine Khettat
+:company: BLIND SYSTEMS
+:website: https://www.blindsystems.org
+:version: 0.5.0
+:copyright: Copyright (c) 2026 Amine Khettat
+:license: Easy-LIN Source-Available License Version 1.0. See LICENSE.
+:disclaimer: Provided "AS IS", without warranties or liability, as described
+        in LICENSE.
 """
 
 from PyQt5.QtWidgets import (
-    QWidget, QTabWidget, QVBoxLayout, QHBoxLayout,
-    QTreeWidget, QTreeWidgetItem, QTableWidget, QTableWidgetItem,
-    QLabel, QGroupBox, QHeaderView, QSizePolicy,
+    QWidget,
+    QTabWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QTableWidget,
+    QTableWidgetItem,
+    QLabel,
+    QGroupBox,
+    QHeaderView,
+    QSizePolicy,
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont, QColor
@@ -24,7 +37,11 @@ from src.ldf_parser import LDFFile
 # Helper: create read-only table item
 # ---------------------------------------------------------------------------
 
-def _item(text: str, align: Qt.AlignmentFlag = Qt.AlignLeft | Qt.AlignVCenter) -> QTableWidgetItem:
+
+def _item(
+    text: str, align: Qt.AlignmentFlag = Qt.AlignLeft | Qt.AlignVCenter
+) -> QTableWidgetItem:
+    """Create a read-only table item with the requested alignment."""
     it = QTableWidgetItem(str(text))
     it.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
     it.setTextAlignment(align)
@@ -32,6 +49,7 @@ def _item(text: str, align: Qt.AlignmentFlag = Qt.AlignLeft | Qt.AlignVCenter) -
 
 
 def _bold(text: str) -> QTableWidgetItem:
+    """Create a read-only table item with bold text."""
     it = _item(text)
     f = it.font()
     f.setBold(True)
@@ -43,8 +61,12 @@ def _bold(text: str) -> QTableWidgetItem:
 # Overview tab
 # ---------------------------------------------------------------------------
 
+
 class _OverviewTab(QWidget):
+    """Overview tab showing protocol metadata, nodes, and summary counts."""
+
     def __init__(self, ldf: LDFFile, parent=None):
+        """Build the overview tab showing network metadata and node summary."""
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
@@ -68,7 +90,9 @@ class _OverviewTab(QWidget):
         for i, (k, v) in enumerate(rows):
             table.setItem(i, 0, _bold(k))
             table.setItem(i, 1, _item(v))
-        table.setFixedHeight(table.rowHeight(0) * 4 + table.horizontalHeader().height() + 4)
+        table.setFixedHeight(
+            table.rowHeight(0) * 4 + table.horizontalHeader().height() + 4
+        )
         proto_layout.addWidget(table)
         layout.addWidget(proto_box)
 
@@ -81,10 +105,13 @@ class _OverviewTab(QWidget):
             tree.header().setSectionResizeMode(QHeaderView.ResizeToContents)
             tree.setAlternatingRowColors(True)
             m = ldf.nodes.master
-            master_item = QTreeWidgetItem([
-                m.name, "Master",
-                f"Time base: {m.time_base} ms  |  Jitter: {m.jitter} ms",
-            ])
+            master_item = QTreeWidgetItem(
+                [
+                    m.name,
+                    "Master",
+                    f"Time base: {m.time_base} ms  |  Jitter: {m.jitter} ms",
+                ]
+            )
             master_item.setForeground(0, QColor("#005B9F"))
             tree.addTopLevelItem(master_item)
             for slave in ldf.nodes.slaves:
@@ -127,8 +154,12 @@ class _OverviewTab(QWidget):
 # Signals tab
 # ---------------------------------------------------------------------------
 
+
 class _SignalsTab(QWidget):
+    """Signals tab showing the flat signal table."""
+
     def __init__(self, ldf: LDFFile, parent=None):
+        """Build the signals table tab."""
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
@@ -144,9 +175,17 @@ class _SignalsTab(QWidget):
 
         for row, sig in enumerate(ldf.signals):
             table.setItem(row, 0, _item(sig.name))
-            table.setItem(row, 1, _item(str(sig.size), Qt.AlignCenter | Qt.AlignVCenter))
-            table.setItem(row, 2, _item(f"0x{sig.init_value:X} ({sig.init_value})",
-                                        Qt.AlignCenter | Qt.AlignVCenter))
+            table.setItem(
+                row, 1, _item(str(sig.size), Qt.AlignCenter | Qt.AlignVCenter)
+            )
+            table.setItem(
+                row,
+                2,
+                _item(
+                    f"0x{sig.init_value:X} ({sig.init_value})",
+                    Qt.AlignCenter | Qt.AlignVCenter,
+                ),
+            )
             table.setItem(row, 3, _item(sig.publisher))
             table.setItem(row, 4, _item(", ".join(sig.subscribers)))
 
@@ -157,35 +196,47 @@ class _SignalsTab(QWidget):
 # Frames tab
 # ---------------------------------------------------------------------------
 
+
 class _FramesTab(QWidget):
+    """Frames tab showing frames and their nested signal placements."""
+
     def __init__(self, ldf: LDFFile, parent=None):
+        """Build the frames tab and nested signal tree."""
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
 
         tree = QTreeWidget()
-        tree.setHeaderLabels(["Name / Signal", "Frame ID", "Publisher", "Size", "Bit Offset"])
+        tree.setHeaderLabels(
+            ["Name / Signal", "Frame ID", "Publisher", "Size", "Bit Offset"]
+        )
         tree.header().setSectionResizeMode(0, QHeaderView.Stretch)
         for c in (1, 2, 3, 4):
             tree.header().setSectionResizeMode(c, QHeaderView.ResizeToContents)
         tree.setAlternatingRowColors(True)
 
         for frame in ldf.frames:
-            top = QTreeWidgetItem([
-                frame.name,
-                f"0x{frame.frame_id:02X}  ({frame.frame_id})",
-                frame.publisher,
-                f"{frame.frame_size} byte{'s' if frame.frame_size != 1 else ''}",
-                "",
-            ])
+            top = QTreeWidgetItem(
+                [
+                    frame.name,
+                    f"0x{frame.frame_id:02X}  ({frame.frame_id})",
+                    frame.publisher,
+                    f"{frame.frame_size} byte{'s' if frame.frame_size != 1 else ''}",
+                    "",
+                ]
+            )
             top.setFont(0, _bold_font())
             top.setBackground(0, QColor("#EEF4FB"))
             for sig_ref in frame.signals:
-                child = QTreeWidgetItem([
-                    f"  ↳ {sig_ref.signal_name}",
-                    "", "", "",
-                    str(sig_ref.bit_offset),
-                ])
+                child = QTreeWidgetItem(
+                    [
+                        f"  ↳ {sig_ref.signal_name}",
+                        "",
+                        "",
+                        "",
+                        str(sig_ref.bit_offset),
+                    ]
+                )
                 child.setForeground(0, QColor("#3A7D44"))
                 top.addChild(child)
             tree.addTopLevelItem(top)
@@ -198,8 +249,12 @@ class _FramesTab(QWidget):
 # Schedules tab
 # ---------------------------------------------------------------------------
 
+
 class _SchedulesTab(QWidget):
+    """Schedules tab showing schedule tables and referenced frames."""
+
     def __init__(self, ldf: LDFFile, parent=None):
+        """Build the schedule tables tab."""
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
@@ -218,11 +273,13 @@ class _SchedulesTab(QWidget):
             for entry in sched.entries:
                 frame = ldf.frame_by_name(entry.frame_name)
                 fid = f"0x{frame.frame_id:02X}" if frame else "—"
-                child = QTreeWidgetItem([
-                    f"  ↳ {entry.frame_name}",
-                    str(entry.delay),
-                    fid,
-                ])
+                child = QTreeWidgetItem(
+                    [
+                        f"  ↳ {entry.frame_name}",
+                        str(entry.delay),
+                        fid,
+                    ]
+                )
                 top.addChild(child)
             tree.addTopLevelItem(top)
 
@@ -234,8 +291,12 @@ class _SchedulesTab(QWidget):
 # Encodings tab
 # ---------------------------------------------------------------------------
 
+
 class _EncodingsTab(QWidget):
+    """Encodings tab showing encoding types and signal representations."""
+
     def __init__(self, ldf: LDFFile, parent=None):
+        """Build the encoding types and signal representation tab."""
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
@@ -251,17 +312,21 @@ class _EncodingsTab(QWidget):
             top.setFont(0, _bold_font())
             top.setBackground(0, QColor("#EEF4FB"))
             for lv in enc.logical_values:
-                child = QTreeWidgetItem([
-                    f"  logical: {lv.signal_value}",
-                    f'"{lv.text}"',
-                ])
+                child = QTreeWidgetItem(
+                    [
+                        f"  logical: {lv.signal_value}",
+                        f'"{lv.text}"',
+                    ]
+                )
                 child.setForeground(0, QColor("#8B4513"))
                 top.addChild(child)
             for pr in enc.physical_ranges:
-                child = QTreeWidgetItem([
-                    f"  physical: [{pr.min_value}–{pr.max_value}]",
-                    f"× {pr.scale} + {pr.offset}  [{pr.unit}]",
-                ])
+                child = QTreeWidgetItem(
+                    [
+                        f"  physical: [{pr.min_value}–{pr.max_value}]",
+                        f"× {pr.scale} + {pr.offset}  [{pr.unit}]",
+                    ]
+                )
                 child.setForeground(0, QColor("#005B9F"))
                 top.addChild(child)
             if enc.bcd:
@@ -290,7 +355,9 @@ class _EncodingsTab(QWidget):
 # Public widget
 # ---------------------------------------------------------------------------
 
+
 def _bold_font() -> QFont:
+    """Return a reusable bold font for section headers."""
     f = QFont()
     f.setBold(True)
     return f
@@ -307,11 +374,13 @@ class LDFViewer(QTabWidget):
     """
 
     def __init__(self, ldf: LDFFile, parent=None):
+        """Initialize the tab widget for a parsed LDF file."""
         super().__init__(parent)
         self._ldf = ldf
         self._build_tabs()
 
     def _build_tabs(self) -> None:
+        """Populate tabs from the currently loaded parsed LDF."""
         ldf = self._ldf
         self.addTab(_OverviewTab(ldf), "📋 Overview")
         self.addTab(_SignalsTab(ldf), f"〜 Signals ({len(ldf.signals)})")

@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if command -v python >/dev/null 2>&1; then
+  python tools/confidential_ldf_guard.py --mode pre-push
+elif command -v py >/dev/null 2>&1; then
+  py -3 tools/confidential_ldf_guard.py --mode pre-push
+else
+  echo "Python not found: cannot run confidential LDF guard."
+  exit 1
+fi
