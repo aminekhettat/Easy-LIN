@@ -34,7 +34,9 @@ def main() -> None:
         return
 
     try:
-        import tkinter  # noqa: F401
+        import tkinter
+
+        getattr(tkinter, "TkVersion", None)
     except ImportError:
         print(
             "ERROR: tkinter is not available.\n"

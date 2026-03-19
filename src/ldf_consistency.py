@@ -15,9 +15,9 @@ while tolerating vendor-specific formatting accepted by the parser.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
-import re
 from typing import Dict, List, Set
 
 from src.ldf_parser import LDFFile, LDFParseError, parse_ldf
@@ -62,14 +62,10 @@ def validate_ldf_file(path: str) -> LDFConsistencyReport:
     try:
         ldf = parse_ldf(path)
     except FileNotFoundError as exc:
-        report.issues.append(
-            ConsistencyIssue("error", "FILE_NOT_FOUND", f"File not found: {exc}")
-        )
+        report.issues.append(ConsistencyIssue("error", "FILE_NOT_FOUND", f"File not found: {exc}"))
         return report
     except LDFParseError as exc:
-        report.issues.append(
-            ConsistencyIssue("error", "PARSE_ERROR", f"LDF parse error: {exc}")
-        )
+        report.issues.append(ConsistencyIssue("error", "PARSE_ERROR", f"LDF parse error: {exc}"))
         return report
 
     report.parsed = True
@@ -94,10 +90,8 @@ def validate_ldf(ldf: LDFFile) -> List[ConsistencyIssue]:
         warning("GLOBAL_PROTOCOL_MISSING", "LIN_protocol_version is missing.")
     if not ldf.language_version:
         warning("GLOBAL_LANGUAGE_MISSING", "LIN_language_version is missing.")
-    if not (1.0 <= ldf.speed <= 20.0):
-        error(
-            "GLOBAL_SPEED_RANGE", f"LIN_speed {ldf.speed} kbps is outside 1..20 kbps."
-        )
+    if not 1.0 <= ldf.speed <= 20.0:
+        error("GLOBAL_SPEED_RANGE", f"LIN_speed {ldf.speed} kbps is outside 1..20 kbps.")
 
     # Nodes
     declared_nodes: Set[str] = set()
@@ -288,8 +282,7 @@ def validate_ldf(ldf: LDFFile) -> List[ConsistencyIssue]:
             if (
                 time_base is not None
                 and time_base > 0
-                and abs((entry.delay / time_base) - round(entry.delay / time_base))
-                > 1e-6
+                and abs((entry.delay / time_base) - round(entry.delay / time_base)) > 1e-6
             ):
                 warning(
                     "SCHEDULE_DELAY_MULTIPLE",
@@ -423,10 +416,7 @@ def format_report(report: LDFConsistencyReport) -> str:
     elif report.error_count == 0:
         header += f"CONSISTENT WITH WARNINGS ({report.warning_count} warning(s))"
     else:
-        header += (
-            f"INCONSISTENT ({report.error_count} error(s), "
-            f"{report.warning_count} warning(s))"
-        )
+        header += f"INCONSISTENT ({report.error_count} error(s), {report.warning_count} warning(s))"
 
     lines = [header]
     for issue in report.issues:

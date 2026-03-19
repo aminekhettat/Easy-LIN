@@ -25,7 +25,6 @@ from PyQt5.QtWidgets import (
     QLabel,
     QGroupBox,
     QHeaderView,
-    QSizePolicy,
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont, QColor
@@ -38,9 +37,7 @@ from src.ldf_parser import LDFFile
 # ---------------------------------------------------------------------------
 
 
-def _item(
-    text: str, align: Qt.AlignmentFlag = Qt.AlignLeft | Qt.AlignVCenter
-) -> QTableWidgetItem:
+def _item(text: str, align: Qt.AlignmentFlag = Qt.AlignLeft | Qt.AlignVCenter) -> QTableWidgetItem:
     """Create a read-only table item with the requested alignment."""
     it = QTableWidgetItem(str(text))
     it.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
@@ -90,9 +87,7 @@ class _OverviewTab(QWidget):
         for i, (k, v) in enumerate(rows):
             table.setItem(i, 0, _bold(k))
             table.setItem(i, 1, _item(v))
-        table.setFixedHeight(
-            table.rowHeight(0) * 4 + table.horizontalHeader().height() + 4
-        )
+        table.setFixedHeight(table.rowHeight(0) * 4 + table.horizontalHeader().height() + 4)
         proto_layout.addWidget(table)
         layout.addWidget(proto_box)
 
@@ -175,9 +170,7 @@ class _SignalsTab(QWidget):
 
         for row, sig in enumerate(ldf.signals):
             table.setItem(row, 0, _item(sig.name))
-            table.setItem(
-                row, 1, _item(str(sig.size), Qt.AlignCenter | Qt.AlignVCenter)
-            )
+            table.setItem(row, 1, _item(str(sig.size), Qt.AlignCenter | Qt.AlignVCenter))
             table.setItem(
                 row,
                 2,
@@ -207,9 +200,7 @@ class _FramesTab(QWidget):
         layout.setContentsMargins(8, 8, 8, 8)
 
         tree = QTreeWidget()
-        tree.setHeaderLabels(
-            ["Name / Signal", "Frame ID", "Publisher", "Size", "Bit Offset"]
-        )
+        tree.setHeaderLabels(["Name / Signal", "Frame ID", "Publisher", "Size", "Bit Offset"])
         tree.header().setSectionResizeMode(0, QHeaderView.Stretch)
         for c in (1, 2, 3, 4):
             tree.header().setSectionResizeMode(c, QHeaderView.ResizeToContents)

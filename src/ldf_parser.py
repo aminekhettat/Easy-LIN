@@ -16,7 +16,7 @@ network.
 
 import re
 from dataclasses import dataclass, field
-from typing import List, Optional, Dict
+from typing import Dict, List, Optional
 
 
 # ---------------------------------------------------------------------------
@@ -572,9 +572,7 @@ class _Parser:
                     self._expect(",")
                     text = self._strip_quotes(self._consume())
                     self._expect_semi()
-                    enc.logical_values.append(
-                        LDFLogicalValue(signal_value=val, text=text)
-                    )
+                    enc.logical_values.append(LDFLogicalValue(signal_value=val, text=text))
                 elif kind == "physical_value":
                     self._expect(",")
                     min_v = self._consume_number()
@@ -700,9 +698,7 @@ class _Parser:
                 elif key == "configurable_frames":
                     self._expect("{")
                     while self._peek() != "}":
-                        if (
-                            self._peek() is None
-                        ):  # pragma: no cover - defensive EOF guard
+                        if self._peek() is None:  # pragma: no cover - defensive EOF guard
                             break
                         fname = self._consume()
                         if fname == ";":

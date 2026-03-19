@@ -18,7 +18,7 @@ import threading
 import time
 from typing import Callable, List, Optional
 
-from src.ldf_parser import LDFFile, LDFFrame, LDFScheduleTable
+from src.ldf_parser import LDFFile, LDFScheduleTable
 from src.vector_xl_api import (
     VectorXLApi,
     VectorXLDriverNotFoundError,
@@ -61,9 +61,7 @@ class ReceivedFrame:
         """Return a compact diagnostic representation of the received frame."""
         hex_data = " ".join(f"{b:02X}" for b in self.data)
         return (
-            f"ReceivedFrame(id=0x{self.frame_id:02X}, "
-            f"data=[{hex_data}], "
-            f"ts={self.timestamp_ns}ns)"
+            f"ReceivedFrame(id=0x{self.frame_id:02X}, data=[{hex_data}], ts={self.timestamp_ns}ns)"
         )
 
 
@@ -201,9 +199,7 @@ class LINMaster:
                 lin_version = XL_LIN_VERSION_2_0
             self._ldf = ldf
 
-        self._api.set_lin_channel_params(
-            port_handle, channel_mask, baudrate, lin_version
-        )
+        self._api.set_lin_channel_params(port_handle, channel_mask, baudrate, lin_version)
 
         # Configure DLC table from LDF
         if ldf is not None:
@@ -270,9 +266,7 @@ class LINMaster:
         """
         if not self._connected:
             raise RuntimeError("Not connected.")
-        self._api.set_lin_frame_response(
-            self._port_handle, self._access_mask, frame_id, data
-        )
+        self._api.set_lin_frame_response(self._port_handle, self._access_mask, frame_id, data)
         self._api.lin_send_request(self._port_handle, self._access_mask, frame_id)
 
     # ------------------------------------------------------------------
@@ -352,9 +346,7 @@ class LINMaster:
                         frame_id = frame.frame_id
                 if frame_id is not None:
                     try:
-                        self._api.lin_send_request(
-                            self._port_handle, self._access_mask, frame_id
-                        )
+                        self._api.lin_send_request(self._port_handle, self._access_mask, frame_id)
                     except VectorXLError as exc:
                         log.warning("Schedule TX error: %s", exc)
                         if self._on_error:

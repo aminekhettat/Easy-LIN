@@ -14,7 +14,6 @@ schedule execution, and live frame monitoring.
 """
 
 import logging
-import time
 from typing import Optional
 
 from PyQt5.QtWidgets import (
@@ -28,16 +27,12 @@ from PyQt5.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QHeaderView,
-    QSizePolicy,
     QLineEdit,
-    QSpinBox,
     QCheckBox,
-    QScrollArea,
     QSplitter,
-    QPlainTextEdit,
 )
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QObject, pyqtSlot
-from PyQt5.QtGui import QFont, QColor
+from PyQt5.QtCore import Qt, pyqtSignal, QObject, pyqtSlot
+from PyQt5.QtGui import QColor
 
 from src.ldf_parser import LDFFile
 from src.lin_master import LINMaster, ReceivedFrame
@@ -87,9 +82,7 @@ class _FrameMonitor(QWidget):
         self._table.setHorizontalHeaderLabels(cols)
         self._table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
         for c in (0, 1, 2, 4):
-            self._table.horizontalHeader().setSectionResizeMode(
-                c, QHeaderView.ResizeToContents
-            )
+            self._table.horizontalHeader().setSectionResizeMode(c, QHeaderView.ResizeToContents)
         self._table.verticalHeader().setVisible(False)
         self._table.setEditTriggers(QTableWidget.NoEditTriggers)
         self._table.setAlternatingRowColors(True)
@@ -217,9 +210,7 @@ class CommunicationPanel(QWidget):
 
         self._connect_btn = QPushButton("Connect")
         self._connect_btn.setFixedWidth(90)
-        self._connect_btn.setStyleSheet(
-            "QPushButton { background-color: #3A7D44; color: white; }"
-        )
+        self._connect_btn.setStyleSheet("QPushButton { background-color: #3A7D44; color: white; }")
         self._connect_btn.clicked.connect(self._toggle_connection)
         layout.addWidget(self._connect_btn)
 
@@ -370,9 +361,7 @@ class CommunicationPanel(QWidget):
             log.warning("Disconnect error: %s", exc)
         self._status_led.setStyleSheet("color: red; font-size: 18px;")
         self._connect_btn.setText("Connect")
-        self._connect_btn.setStyleSheet(
-            "QPushButton { background-color: #3A7D44; color: white; }"
-        )
+        self._connect_btn.setStyleSheet("QPushButton { background-color: #3A7D44; color: white; }")
         self._send_btn.setEnabled(False)
         self._sched_start_btn.setEnabled(False)
         self._sched_stop_btn.setEnabled(False)

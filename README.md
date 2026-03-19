@@ -78,6 +78,22 @@ pytest
 - CI workflow: `.github/workflows/ci.yml`
 - Target: 100% coverage for covered modules
 
+## Linting
+
+Ruff provides the fast default lint pass for import hygiene, correctness issues,
+and modern Python cleanup.
+
+```bash
+ruff check .
+```
+
+Pylint provides a second pass tuned for this codebase's parser, GUI, PyQt, and
+ctypes integration layers.
+
+```bash
+pylint main.py src tests tools
+```
+
 ## Project Structure
 
 ```text

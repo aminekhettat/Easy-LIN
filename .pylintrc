@@ -1,0 +1,50 @@
+[MASTER]
+jobs=0
+ignore=.venv
+ignore-paths=^docs[\\/]_build[\\/].*,^LDF[\\/].*
+extension-pkg-allow-list=PyQt5
+
+[MESSAGES CONTROL]
+disable=
+    import-outside-toplevel,
+    line-too-long,
+    no-name-in-module,
+    invalid-name,
+    broad-exception-caught,
+    duplicate-code,
+    too-few-public-methods,
+    too-many-ancestors,
+    too-many-instance-attributes,
+    too-many-locals,
+    too-many-branches,
+    too-many-statements,
+    too-many-return-statements,
+    too-many-arguments,
+    too-many-positional-arguments,
+    attribute-defined-outside-init,
+    protected-access,
+    unnecessary-lambda,
+    unnecessary-pass,
+    consider-using-from-import,
+    use-implicit-booleaness-not-comparison,
+    cell-var-from-loop
+
+[FORMAT]
+max-line-length=100
+
+[BASIC]
+bad-names=foo,baz,toto,tutu,tata
+ignored-argument-names=_.*|^index$|^timeout$
+
+[DESIGN]
+max-attributes=15
+max-parents=8
+max-locals=30
+max-branches=70
+max-statements=150
+max-returns=10
+max-args=8
+max-positional-arguments=8
+
+[SIMILARITIES]
+min-similarity-lines=8

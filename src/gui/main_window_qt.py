@@ -20,17 +20,15 @@ from typing import Optional
 from PyQt5.QtWidgets import (
     QMainWindow,
     QWidget,
-    QSplitter,
     QDockWidget,
     QAction,
     QFileDialog,
     QMessageBox,
     QLabel,
     QToolBar,
-    QApplication,
 )
 from PyQt5.QtCore import Qt, QSettings, QSize
-from PyQt5.QtGui import QIcon, QFont, QKeySequence
+from PyQt5.QtGui import QFont, QKeySequence
 
 from src.ldf_parser import parse_ldf, LDFFile, LDFParseError
 from src.gui.ldf_viewer import LDFViewer
@@ -180,9 +178,7 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, APP_NAME, f"LDF parse error:\n{exc}")
             return
         except Exception as exc:
-            QMessageBox.critical(
-                self, APP_NAME, f"Unexpected error loading LDF:\n{exc}"
-            )
+            QMessageBox.critical(self, APP_NAME, f"Unexpected error loading LDF:\n{exc}")
             log.exception("Unexpected error loading LDF")
             return
 
@@ -271,8 +267,7 @@ class MainWindow(QMainWindow):
         import webbrowser
 
         webbrowser.open(
-            "https://www.vector.com/int/en/products/products-a-z/"
-            "software/xl-driver-library/"
+            "https://www.vector.com/int/en/products/products-a-z/software/xl-driver-library/"
         )
 
     # ------------------------------------------------------------------

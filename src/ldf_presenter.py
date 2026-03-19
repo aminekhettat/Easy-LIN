@@ -114,9 +114,7 @@ def describe_key(ldf: LDFFile, key: str) -> str:
 
     if key.startswith("encoding."):
         name = key.split(".", 1)[1]
-        encoding = next(
-            (item for item in ldf.encoding_types if item.name == name), None
-        )
+        encoding = next((item for item in ldf.encoding_types if item.name == name), None)
         if encoding is None:
             return f"Encoding type {name} was not found."
         return describe_encoding(encoding)
@@ -126,12 +124,9 @@ def describe_key(ldf: LDFFile, key: str) -> str:
         table = next((item for item in ldf.schedule_tables if item.name == name), None)
         if table is None:
             return f"Schedule table {name} was not found."
-        header = (
-            f"Schedule table {table.name}. It contains {len(table.entries)} entries."
-        )
+        header = f"Schedule table {table.name}. It contains {len(table.entries)} entries."
         details = [
-            f"{entry.frame_name} after {entry.delay} milliseconds"
-            for entry in table.entries
+            f"{entry.frame_name} after {entry.delay} milliseconds" for entry in table.entries
         ]
         return header + "\n" + "\n".join(details)
 
@@ -165,7 +160,9 @@ def describe_frame(frame: LDFFrame, ldf: LDFFile) -> str:
         signal = ldf.signal(sig_ref.signal_name)
         width = signal.size if signal else "unknown"
         lines.append(
-            f"Signal {sig_ref.signal_name} starts at bit {sig_ref.bit_offset} and uses {width} bit(s)."
+            "Signal "
+            f"{sig_ref.signal_name} starts at bit {sig_ref.bit_offset} "
+            f"and uses {width} bit(s)."
         )
     return "\n".join(lines)
 

@@ -19,7 +19,6 @@ import ctypes
 import ctypes.util
 import logging
 import platform
-import sys
 from ctypes import c_int, c_uint, c_ubyte, c_char, c_char_p, POINTER
 from typing import List, Optional, Tuple
 
@@ -58,9 +57,6 @@ XL_CHANNEL_FLAG_LIN_CAP = 0x00000400
 
 # Activate flags
 XL_ACTIVATE_RESET_CLOCK = 8
-
-# Event tags
-XL_LIN_MSG = 14
 
 # ---------------------------------------------------------------------------
 # Structures  (must match the C layout in xlapi.h exactly)
@@ -214,9 +210,7 @@ class VectorXLApi:
     def _load_dll() -> ctypes.CDLL:
         """Load the Vector XL DLL from the current Windows installation."""
         if platform.system() != "Windows":
-            raise VectorXLDriverNotFoundError(
-                "Vector XL Driver is only available on Windows."
-            )
+            raise VectorXLDriverNotFoundError("Vector XL Driver is only available on Windows.")
         # Try 64-bit first, then 32-bit
         for name in ("vxlapi64", "vxlapi"):
             path = ctypes.util.find_library(name)
@@ -269,9 +263,7 @@ class VectorXLApi:
         _proto("xlClosePort", c_int, c_int)
         _proto("xlActivateChannel", c_int, c_int, ctypes.c_ulonglong, c_uint, c_uint)
         _proto("xlDeactivateChannel", c_int, c_int, ctypes.c_ulonglong)
-        _proto(
-            "xlLinSetChannelParams", c_int, c_int, ctypes.c_ulonglong, XL_LIN_STAT_PARAM
-        )
+        _proto("xlLinSetChannelParams", c_int, c_int, ctypes.c_ulonglong, XL_LIN_STAT_PARAM)
         _proto("xlLinSetDLC", c_int, c_int, ctypes.c_ulonglong, c_ubyte * 64)
         _proto(
             "xlLinSetFrameResponse",
@@ -308,9 +300,7 @@ class VectorXLApi:
             raise VectorXLError("xlGetDriverConfig", status)
         return cfg
 
-    def lin_channels(
-        self, cfg: Optional[XL_DRIVER_CONFIG] = None
-    ) -> List[XL_CHANNEL_CONFIG]:
+    def lin_channels(self, cfg: Optional[XL_DRIVER_CONFIG] = None) -> List[XL_CHANNEL_CONFIG]:
         """Return all channels that have LIN capability."""
         if cfg is None:
             cfg = self.get_driver_config()
