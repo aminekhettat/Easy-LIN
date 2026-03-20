@@ -8,7 +8,7 @@ simulation or demo mode.
 :author: Amine Khettat
 :company: BLIND SYSTEMS
 :website: https://www.blindsystems.org
-:version: 0.5.0
+:version: 0.5.2
 :copyright: Copyright (c) 2026 Amine Khettat
 :license: Easy-LIN Source-Available License Version 1.0. See LICENSE.
 :disclaimer: Provided "AS IS", without warranties or liability, as described
@@ -377,7 +377,7 @@ class VectorXLApi:
         access_mask: int,
         dlc_table: List[int],
     ) -> None:
-        """Set data length for each of the 64 LIN frame IDs (0–63)."""
+        """Set data length for each of the 64 LIN frame IDs (0â€“63)."""
         arr = (c_ubyte * 64)(*([0] * 64))
         for i, v in enumerate(dlc_table[:64]):
             arr[i] = v
@@ -481,3 +481,4 @@ class VectorXLApi:
         """Return the Vector driver error string for a status code."""
         raw = self._dll.xlGetErrorString(status)
         return raw.decode("ascii", errors="replace") if raw else f"status={status:#x}"
+

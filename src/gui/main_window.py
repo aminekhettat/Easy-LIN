@@ -6,7 +6,7 @@ communication panel, and status bar used by the default Easy-LIN frontend.
 :author: Amine Khettat
 :company: BLIND SYSTEMS
 :website: https://www.blindsystems.org
-:version: 0.5.0
+:version: 0.5.2
 :copyright: Copyright (c) 2026 Amine Khettat
 :license: Easy-LIN Source-Available License Version 1.0. See LICENSE.
 :disclaimer: Provided "AS IS", without warranties or liability, as described
@@ -21,7 +21,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import Optional
 
-from src.ldf_parser import LDFFile, parse_ldf
+from src.ldf_parser import LDFFile, LDFParseError, parse_ldf
 from src.gui.ldf_tree import LDFTreeView
 from src.gui.signal_viewer import DetailViewer
 from src.gui.comm_panel import CommunicationPanel
@@ -50,6 +50,7 @@ class MainWindow(tk.Tk):
 
         self._ldf: Optional[LDFFile] = None
         self._last_description = "Ready. Open an LDF file to get started."
+        self._closing = False
 
         self._apply_theme()
         self._build_menu()
@@ -84,11 +85,9 @@ class MainWindow(tk.Tk):
         """Create application menus and keyboard shortcuts."""
         menubar = tk.Menu(self)
 
-        # ── File ─────────────────────────────────────────────────────
+        # â”€â”€ File â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         file_menu = tk.Menu(menubar, tearoff=False)
-        file_menu.add_command(
-            label="Open LDF…", accelerator="Ctrl+O", command=self._open_ldf
-        )
+        file_menu.add_command(label="Open LDFâ€¦", accelerator="Ctrl+O", command=self._open_ldf)
         file_menu.add_command(
             label="Focus Tree",
             accelerator="Ctrl+1",
@@ -104,17 +103,15 @@ class MainWindow(tk.Tk):
         file_menu.add_command(label="Exit", command=self._on_close)
         menubar.add_cascade(label="File", menu=file_menu)
 
-        # ── View ─────────────────────────────────────────────────────
+        # â”€â”€ View â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         view_menu = tk.Menu(menubar, tearoff=False)
         view_menu.add_command(label="Expand All Tree", command=self._expand_all)
         view_menu.add_command(label="Collapse All Tree", command=self._collapse_all)
         menubar.add_cascade(label="View", menu=view_menu)
 
-        # ── Help ─────────────────────────────────────────────────────
+        # â”€â”€ Help â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         help_menu = tk.Menu(menubar, tearoff=False)
-        help_menu.add_command(
-            label="Accessibility Help", command=self._show_accessibility_help
-        )
+        help_menu.add_command(label="Accessibility Help", command=self._show_accessibility_help)
         help_menu.add_command(label="About", command=self._show_about)
         menubar.add_cascade(label="Help", menu=help_menu)
 
@@ -130,11 +127,11 @@ class MainWindow(tk.Tk):
 
     def _build_layout(self) -> None:
         """Create the main paned layout for navigation and communication."""
-        # ── Outer vertical paned window (top area / comm panel) ───────
+        # â”€â”€ Outer vertical paned window (top area / comm panel) â”€â”€â”€â”€â”€â”€â”€
         outer_pane = ttk.PanedWindow(self, orient="vertical")
         outer_pane.pack(fill="both", expand=True, padx=4, pady=4)
 
-        # ── Top: horizontal paned window (tree / detail) ──────────────
+        # â”€â”€ Top: horizontal paned window (tree / detail) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         top_pane = ttk.PanedWindow(outer_pane, orient="horizontal")
 
         # Left: LDF tree view
@@ -149,7 +146,7 @@ class MainWindow(tk.Tk):
 
         outer_pane.add(top_pane, weight=3)
 
-        # ── Bottom: communication panel ───────────────────────────────
+        # â”€â”€ Bottom: communication panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         self._comm_panel = CommunicationPanel(outer_pane)
         outer_pane.add(self._comm_panel, weight=1)
 
@@ -169,6 +166,7 @@ class MainWindow(tk.Tk):
     def _open_ldf(self) -> None:
         """Prompt for an LDF file and load it into the application."""
         path = filedialog.askopenfilename(
+            parent=self,
             title="Open LDF file",
             filetypes=[("LIN Description Files", "*.ldf"), ("All files", "*.*")],
         )
@@ -183,9 +181,20 @@ class MainWindow(tk.Tk):
                 f"{len(ldf.frames)} frames, "
                 f"{len(ldf.schedule_tables)} schedule tables)"
             )
+        except LDFParseError as exc:
+            logger.exception("LDF syntax/structure error while parsing %s", path)
+            messagebox.showerror(
+                "Parse error",
+                f"Could not parse LDF file:\n{exc}",
+                parent=self,
+            )
         except Exception as exc:
             logger.exception("Failed to parse LDF file %s", path)
-            messagebox.showerror("Parse error", f"Could not parse LDF file:\n{exc}")
+            messagebox.showerror(
+                "Open error",
+                f"Unexpected error while opening the selected file:\n{exc}",
+                parent=self,
+            )
 
     def _close_ldf(self) -> None:
         """Unload the current LDF from all visible widgets."""
@@ -201,8 +210,9 @@ class MainWindow(tk.Tk):
         self._tree_view.load(ldf)
         self._detail_viewer.set_ldf(ldf)
         self._comm_panel.set_ldf(ldf)
-        filename = Path(ldf.source_path).name if ldf.source_path else "LDF"
-        self.title(f"{_APP_TITLE} – {filename}")
+        source_path = getattr(ldf, "source_path", "")
+        filename = Path(source_path).name if source_path else "LDF"
+        self.title(f"{_APP_TITLE} â€“ {filename}")
 
     # ------------------------------------------------------------------
     # Tree selection
@@ -212,7 +222,8 @@ class MainWindow(tk.Tk):
         """Update the details panel and status line for the selected node."""
         self._detail_viewer.show(info)
         if self._ldf and info.get("key"):
-            line = describe_key(self._ldf, info["key"]).splitlines()[0]
+            description = describe_key(self._ldf, info["key"])
+            line = description.splitlines()[0] if description else ""
             self._last_description = line
             self._set_status(line)
 
@@ -254,7 +265,7 @@ class MainWindow(tk.Tk):
 
     def _show_about(self) -> None:
         """Display the application about dialog."""
-        messagebox.showinfo("About Easy-LIN", _ABOUT_TEXT)
+        messagebox.showinfo("About Easy-LIN", _ABOUT_TEXT, parent=self)
 
     def _show_accessibility_help(self) -> None:
         """Display keyboard shortcuts and accessibility guidance."""
@@ -267,9 +278,18 @@ class MainWindow(tk.Tk):
             "F1: Open this help\n\n"
             "Tip: Tree selections are mirrored to the status bar and details panel "
             "for better screen reader narration.",
+            parent=self,
         )
 
     def _on_close(self) -> None:
         """Stop communication threads and close the application window."""
-        self._comm_panel.stop()
+        if self._closing:
+            return
+        self._closing = True
+        try:
+            self._comm_panel.stop()
+        except Exception:
+            logger.exception("Error while stopping communication panel on exit")
+        self.quit()
         self.destroy()
+

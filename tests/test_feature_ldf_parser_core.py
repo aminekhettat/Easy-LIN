@@ -153,6 +153,16 @@ def test_parse_file_roundtrip(tmp_path) -> None:
     assert ldf.frame_by_name("DoorStatus").frame_size == 2
 
 
+def test_parse_file_sets_source_path(tmp_path) -> None:
+    """Ensure file-based parsing stores source_path for GUI title rendering."""
+    path = tmp_path / "network_with_path.ldf"
+    path.write_text(SAMPLE_LDF, encoding="utf-8")
+
+    ldf = parse_ldf(str(path))
+
+    assert ldf.source_path == str(path)
+
+
 def test_parser_handles_comments_and_negative_values() -> None:
     """Ensure comments and signed numeric encoding fields are accepted."""
     content = """

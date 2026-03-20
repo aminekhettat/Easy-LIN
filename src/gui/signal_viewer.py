@@ -5,7 +5,7 @@ Displays detailed human-readable information about a selected tree item.
 :author: Amine Khettat
 :company: BLIND SYSTEMS
 :website: https://www.blindsystems.org
-:version: 0.5.0
+:version: 0.5.2
 :copyright: Copyright (c) 2026 Amine Khettat
 :license: Easy-LIN Source-Available License Version 1.0. See LICENSE.
 :disclaimer: Provided "AS IS", without warranties or liability, as described
@@ -118,3 +118,4 @@ class DetailViewer(ttk.LabelFrame):
         """Write one key-value pair using the configured text tags."""
         self._text.insert(tk.END, f"{key}: ", "key")
         self._text.insert(tk.END, f"{value}\n", "value")
+

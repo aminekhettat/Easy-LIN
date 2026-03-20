@@ -6,7 +6,7 @@ monitoring received or transmitted traffic.
 :author: Amine Khettat
 :company: BLIND SYSTEMS
 :website: https://www.blindsystems.org
-:version: 0.5.0
+:version: 0.5.2
 :copyright: Copyright (c) 2026 Amine Khettat
 :license: Easy-LIN Source-Available License Version 1.0. See LICENSE.
 :disclaimer: Provided "AS IS", without warranties or liability, as described
@@ -55,8 +55,12 @@ class CommunicationPanel(ttk.LabelFrame):
 
     def stop(self) -> None:
         """Disconnect if connected (call on application close)."""
-        if self._bus and self._bus.is_connected:
-            self._bus.stop()
+        if self._bus:
+            try:
+                self._bus.stop()
+            except Exception:
+                logger.exception("Error while stopping LIN transport")
+            self._bus = None
 
     # ------------------------------------------------------------------
     # UI construction
@@ -103,14 +107,10 @@ class CommunicationPanel(ttk.LabelFrame):
         self._disconnect_btn.pack(side="left", padx=4)
 
         self._status_var = tk.StringVar(value="Disconnected")
-        self._status_label = ttk.Label(
-            bar, textvariable=self._status_var, foreground="#c0392b"
-        )
+        self._status_label = ttk.Label(bar, textvariable=self._status_var, foreground="#c0392b")
         self._status_label.pack(side="left", padx=12)
 
-        ttk.Button(bar, text="Clear Log", command=self._clear_log).pack(
-            side="right", padx=4
-        )
+        ttk.Button(bar, text="Clear Log", command=self._clear_log).pack(side="right", padx=4)
 
     def _build_log_table(self) -> None:
         """Create the scrolling traffic log table."""
@@ -159,19 +159,13 @@ class CommunicationPanel(ttk.LabelFrame):
 
         ttk.Label(bar, text="  ID (hex):").pack(side="left")
         self._send_id_var = tk.StringVar(value="01")
-        ttk.Entry(bar, textvariable=self._send_id_var, width=6).pack(
-            side="left", padx=(2, 10)
-        )
+        ttk.Entry(bar, textvariable=self._send_id_var, width=6).pack(side="left", padx=(2, 10))
 
         ttk.Label(bar, text="Data (hex bytes):").pack(side="left")
         self._send_data_var = tk.StringVar(value="00 00 00 00")
-        ttk.Entry(bar, textvariable=self._send_data_var, width=28).pack(
-            side="left", padx=(2, 10)
-        )
+        ttk.Entry(bar, textvariable=self._send_data_var, width=28).pack(side="left", padx=(2, 10))
 
-        self._send_btn = ttk.Button(
-            bar, text="Send Frame", command=self._on_send, state="disabled"
-        )
+        self._send_btn = ttk.Button(bar, text="Send Frame", command=self._on_send, state="disabled")
         self._send_btn.pack(side="left", padx=4)
 
     # ------------------------------------------------------------------
@@ -182,9 +176,7 @@ class CommunicationPanel(ttk.LabelFrame):
         """Populate the frame dropdown from the currently loaded LDF."""
         names = []
         if self._ldf:
-            names = sorted(
-                f"{frm.name}  (0x{frm.frame_id:02X})" for frm in self._ldf.frames
-            )
+            names = sorted(f"{frm.name}  (0x{frm.frame_id:02X})" for frm in self._ldf.frames)
         self._send_frame_combo["values"] = names
 
     def _frame_name_for_id(self, frame_id: int) -> str:
@@ -209,6 +201,11 @@ class CommunicationPanel(ttk.LabelFrame):
         try:
             self._bus.start()
         except Exception as exc:
+            try:
+                self._bus.stop()
+            except Exception:
+                logger.exception("Error while rolling back failed LIN connection")
+            self._bus = None
             messagebox.showerror("Connection error", str(exc))
             return
 
@@ -281,7 +278,11 @@ class CommunicationPanel(ttk.LabelFrame):
 
     def _log_frame(self, frame: LINFrame) -> None:
         """Append a frame to the log table (thread-safe)."""
-        self.after(0, self._append_log_row, frame)
+        try:
+            self.after(0, self._append_log_row, frame)
+        except tk.TclError:
+            # The widget is shutting down; ignore late callbacks from transport threads.
+            return
 
     def _append_log_row(self, frame: LINFrame) -> None:
         """Insert one formatted frame row into the visible traffic log."""
@@ -318,3 +319,4 @@ class CommunicationPanel(ttk.LabelFrame):
         self._log_tree.delete(*self._log_tree.get_children())
         with self._log_lock:
             self._row_count = 0
+

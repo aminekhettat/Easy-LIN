@@ -7,7 +7,7 @@ hardware is not present so the application remains usable without hardware.
 :author: Amine Khettat
 :company: BLIND SYSTEMS
 :website: https://www.blindsystems.org
-:version: 0.5.0
+:version: 0.5.2
 :copyright: Copyright (c) 2026 Amine Khettat
 :license: Easy-LIN Source-Available License Version 1.0. See LICENSE.
 :disclaimer: Provided "AS IS", without warranties or liability, as described
@@ -274,7 +274,7 @@ class VectorLINBus:
         """Open the Vector backend or fall back to the simulation bus."""
         if not _CAN_AVAILABLE:
             logger.warning(
-                "python-can is not installed – switching to simulation mode."
+                "python-can is not installed â€“ switching to simulation mode."
             )
             self._simulation = True
             self._sim_bus = _SimBus()
@@ -299,7 +299,7 @@ class VectorLINBus:
             )
         except Exception as exc:
             logger.warning(
-                "Could not open Vector hardware (%s) – switching to simulation mode.",
+                "Could not open Vector hardware (%s) â€“ switching to simulation mode.",
                 exc,
             )
             self._simulation = True
@@ -359,3 +359,4 @@ class VectorLINBus:
                 cb(frame)
             except Exception:
                 logger.exception("Error in TX callback")
+

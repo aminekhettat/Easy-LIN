@@ -1,5 +1,7 @@
 # Easy-LIN
 
+Current release: 0.5.2
+
 Easy-LIN is an accessibility-first Python application for LIN (Local Interconnect Network) engineering.
 
 It focuses on two workflows:
@@ -11,10 +13,11 @@ It focuses on two workflows:
 
 The GUI is designed for blind and low-vision users:
 
-- Keyboard-first workflow with explicit shortcuts (`Ctrl+O`, `Ctrl+1`, `Ctrl+2`, `F1`)
+- Keyboard-first workflow with explicit shortcuts
 - Screen-reader-friendly tree labels (no decorative symbols)
 - Status bar narration and detailed text panel for every selected item
 - Clear, professional layout with standard menu, status bar, split panes, and communication console
+- Dedicated focus shortcuts for major interface regions
 
 ## Features
 
@@ -60,11 +63,43 @@ pip install -r requirements.txt
 python main.py
 ```
 
-Optional preserved PyQt launcher:
+Legacy Tk launcher (fallback only):
 
 ```bash
-python main.py --qt
+python main.py --tk
 ```
+
+## Accessibility
+
+The default Qt interface is optimized for keyboard and screen-reader usage.
+
+Known limitation (0.5.2): accessibility behaviors were improved, but the interface is still not reliably usable in day-to-day operation. Ongoing stabilization work is required before production use.
+
+### Keyboard Shortcuts
+
+- `Ctrl+O`: Open an LDF file
+- `Ctrl+1`: Focus hierarchy tree
+- `Ctrl+2`: Focus communication panel
+- `Ctrl+C`: Copy focused hierarchy line
+- `F6`: Move focus to next major region
+- `Shift+F6`: Move focus to previous major region
+- `F1`: Open accessibility help
+
+### Navigation Behavior
+
+- After loading an LDF file, focus is moved directly to the hierarchy tree
+- Hierarchy view supports expand/collapse navigation with standard tree keyboard behavior
+- Region shortcuts let you jump directly without repeated tabbing
+- `Tab` and `Shift+Tab` continue navigation inside the currently focused region
+- Bottom status bar tracks persistent fields for LDF summary, LDF warnings/errors, communication state, and latest event
+
+### Screen Reader Notes
+
+- Tree labels and tab names avoid decorative symbols to improve speech clarity
+- Key values are exposed directly in tree rows (for example: `Protocol version: 2.1`)
+- Status bar messages summarize loading and communication state changes
+- Persistent status fields are color-coded: green (healthy), amber (warning/no hardware), red (error), blue (informational)
+- RGAA 4.1.2 (automatable criteria scope): 100% compliant on implemented automatic checks (16/16), validated by automated tests.
 
 ## Testing and Coverage
 

@@ -6,7 +6,7 @@ frame transmission, schedule execution, and receive callback dispatch.
 :author: Amine Khettat
 :company: BLIND SYSTEMS
 :website: https://www.blindsystems.org
-:version: 0.5.0
+:version: 0.5.2
 :copyright: Copyright (c) 2026 Amine Khettat
 :license: Easy-LIN Source-Available License Version 1.0. See LICENSE.
 :disclaimer: Provided "AS IS", without warranties or liability, as described
@@ -173,7 +173,7 @@ class LINMaster:
             Name registered with the Vector XL Driver.
         """
         if self._connected:
-            raise RuntimeError("Already connected — call disconnect() first.")
+            raise RuntimeError("Already connected â€” call disconnect() first.")
 
         self._api = VectorXLApi()
         self._api.open_driver()
@@ -355,3 +355,4 @@ class LINMaster:
                 deadline = time.monotonic() + entry.delay / 1000.0
                 while time.monotonic() < deadline and not self._sched_stop.is_set():
                     time.sleep(0.001)
+

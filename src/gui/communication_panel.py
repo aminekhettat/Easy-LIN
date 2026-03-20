@@ -6,7 +6,7 @@ schedule execution, and live frame monitoring.
 :author: Amine Khettat
 :company: BLIND SYSTEMS
 :website: https://www.blindsystems.org
-:version: 0.5.0
+:version: 0.5.2
 :copyright: Copyright (c) 2026 Amine Khettat
 :license: Easy-LIN Source-Available License Version 1.0. See LICENSE.
 :disclaimer: Provided "AS IS", without warranties or liability, as described
@@ -142,6 +142,9 @@ class CommunicationPanel(QWidget):
     status_message = pyqtSignal(str)
     """Signal emitted to update the main window status bar."""
 
+    communication_state_changed = pyqtSignal(str)
+    """Signal emitted when communication connectivity state changes."""
+
     def __init__(self, parent=None):
         """Initialize the communication panel and signal bridge."""
         super().__init__(parent)
@@ -156,6 +159,7 @@ class CommunicationPanel(QWidget):
 
         self._build_ui()
         self._refresh_channels()
+        self.setFocusPolicy(Qt.StrongFocus)
 
     # ------------------------------------------------------------------
     # UI construction
@@ -194,8 +198,10 @@ class CommunicationPanel(QWidget):
         box = QGroupBox("Hardware Connection")
         layout = QHBoxLayout(box)
 
-        self._status_led = QLabel("●")
+        self._status_led = QLabel("â—")
         self._status_led.setStyleSheet("color: red; font-size: 18px;")
+        self._status_led.setAccessibleName("Connection indicator")
+        self._status_led.setAccessibleDescription("Red means disconnected, green means connected")
         layout.addWidget(self._status_led)
 
         self._channel_combo = QComboBox()
@@ -203,13 +209,15 @@ class CommunicationPanel(QWidget):
         layout.addWidget(QLabel("Channel:"))
         layout.addWidget(self._channel_combo)
 
-        self._refresh_btn = QPushButton("↻ Refresh")
+        self._refresh_btn = QPushButton("â†» Refresh")
         self._refresh_btn.setFixedWidth(90)
+        self._refresh_btn.setAccessibleName("Refresh hardware channels")
         self._refresh_btn.clicked.connect(self._refresh_channels)
         layout.addWidget(self._refresh_btn)
 
         self._connect_btn = QPushButton("Connect")
         self._connect_btn.setFixedWidth(90)
+        self._connect_btn.setAccessibleName("Connect or disconnect hardware")
         self._connect_btn.setStyleSheet("QPushButton { background-color: #3A7D44; color: white; }")
         self._connect_btn.clicked.connect(self._toggle_connection)
         layout.addWidget(self._connect_btn)
@@ -241,8 +249,9 @@ class CommunicationPanel(QWidget):
         )
         layout.addWidget(self._master_response_chk)
 
-        self._send_btn = QPushButton("▶ Send")
+        self._send_btn = QPushButton("â–¶ Send")
         self._send_btn.setEnabled(False)
+        self._send_btn.setAccessibleName("Send frame")
         self._send_btn.setStyleSheet(
             "QPushButton:enabled { background-color: #005B9F; color: white; }"
         )
@@ -262,16 +271,18 @@ class CommunicationPanel(QWidget):
         self._sched_combo.setMinimumWidth(180)
         layout.addWidget(self._sched_combo)
 
-        self._sched_start_btn = QPushButton("▶ Run")
+        self._sched_start_btn = QPushButton("â–¶ Run")
         self._sched_start_btn.setEnabled(False)
+        self._sched_start_btn.setAccessibleName("Run schedule")
         self._sched_start_btn.setStyleSheet(
             "QPushButton:enabled { background-color: #005B9F; color: white; }"
         )
         self._sched_start_btn.clicked.connect(self._run_schedule)
         layout.addWidget(self._sched_start_btn)
 
-        self._sched_stop_btn = QPushButton("■ Stop")
+        self._sched_stop_btn = QPushButton("â–  Stop")
         self._sched_stop_btn.setEnabled(False)
+        self._sched_stop_btn.setAccessibleName("Stop schedule")
         self._sched_stop_btn.setStyleSheet(
             "QPushButton:enabled { background-color: #8B0000; color: white; }"
         )
@@ -306,6 +317,10 @@ class CommunicationPanel(QWidget):
             self._master.is_connected and self._sched_combo.count() > 0
         )
 
+    def focus_primary_control(self) -> None:
+        """Move focus to the first interactive control in this panel."""
+        self._channel_combo.setFocus(Qt.ShortcutFocusReason)
+
     # ------------------------------------------------------------------
     # Channel management
     # ------------------------------------------------------------------
@@ -335,6 +350,7 @@ class CommunicationPanel(QWidget):
         mask = self._channel_combo.currentData()
         if mask is None:
             self.status_message.emit("No hardware channel selected.")
+            self.communication_state_changed.emit("No hardware")
             return
         try:
             self._master.connect(
@@ -349,8 +365,10 @@ class CommunicationPanel(QWidget):
             self._send_btn.setEnabled(True)
             self._sched_start_btn.setEnabled(self._sched_combo.count() > 0)
             self.status_message.emit("Connected to LIN hardware.")
+            self.communication_state_changed.emit("Connected")
         except Exception as exc:
             self.status_message.emit(f"Connection failed: {exc}")
+            self.communication_state_changed.emit("Error")
             log.exception("Connection failed")
 
     def _disconnect(self) -> None:
@@ -366,6 +384,7 @@ class CommunicationPanel(QWidget):
         self._sched_start_btn.setEnabled(False)
         self._sched_stop_btn.setEnabled(False)
         self.status_message.emit("Disconnected.")
+        self.communication_state_changed.emit("Disconnected")
 
     # ------------------------------------------------------------------
     # Frame TX
@@ -389,7 +408,7 @@ class CommunicationPanel(QWidget):
                 data = [int(b, 16) for b in raw.split() if b]
             except ValueError:
                 self.status_message.emit(
-                    "Invalid hex data — use space-separated bytes, e.g. '01 FF A0'"
+                    "Invalid hex data â€” use space-separated bytes, e.g. '01 FF A0'"
                 )
                 return
             try:
@@ -453,3 +472,5 @@ class CommunicationPanel(QWidget):
     def _show_error(self, msg: str) -> None:
         """Forward a hardware error message to the main window status bar."""
         self.status_message.emit(f"Hardware error: {msg}")
+        self.communication_state_changed.emit("Error")
+

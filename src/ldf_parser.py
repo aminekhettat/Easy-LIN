@@ -7,7 +7,7 @@ network.
 :author: Amine Khettat
 :company: BLIND SYSTEMS
 :website: https://www.blindsystems.org
-:version: 0.5.0
+:version: 0.5.2
 :copyright: Copyright (c) 2026 Amine Khettat
 :license: Easy-LIN Source-Available License Version 1.0. See LICENSE.
 :disclaimer: Provided "AS IS", without warranties or liability, as described
@@ -159,6 +159,7 @@ class LDFFile:
     encoding_types: List[LDFEncodingType] = field(default_factory=list)
     signal_representations: List[LDFSignalRepresentation] = field(default_factory=list)
     node_attributes: List[LDFNodeAttributes] = field(default_factory=list)
+    source_path: str = ""
 
     # Convenience lookups (populated after parse)
     _signals_by_name: Dict[str, LDFSignal] = field(default_factory=dict, repr=False)
@@ -166,7 +167,7 @@ class LDFFile:
     _frames_by_id: Dict[int, LDFFrame] = field(default_factory=dict, repr=False)
 
     def build_lookups(self) -> None:
-        """Build name/id → object lookup tables for quick access."""
+        """Build name/id â†’ object lookup tables for quick access."""
         self._signals_by_name = {s.name: s for s in self.signals}
         self._frames_by_name = {f.name: f for f in self.frames}
         self._frames_by_id = {f.frame_id: f for f in self.frames}
@@ -199,7 +200,7 @@ _TOKEN_RE = re.compile(
 
 
 def _remove_comments(text: str) -> str:
-    """Strip // line comments and /* … */ block comments."""
+    """Strip // line comments and /* â€¦ */ block comments."""
     # Block comments first
     text = re.sub(r"/\*.*?\*/", " ", text, flags=re.DOTALL)
     # Line comments
@@ -375,7 +376,7 @@ class _Parser:
                 self._consume()
                 self._skip_block()
             else:
-                # Unknown keyword — skip to next ';' or block
+                # Unknown keyword â€” skip to next ';' or block
                 self._consume()
 
         ldf.build_lookups()
@@ -428,7 +429,7 @@ class _Parser:
             self._expect(",")
             # init value may be hex or decimal
             init_tok = self._consume()
-            # init_value might be a hex array {0x00, …} — skip for now, use 0
+            # init_value might be a hex array {0x00, â€¦} â€” skip for now, use 0
             if init_tok == "{":
                 while self._consume() != "}":
                     pass
@@ -536,7 +537,7 @@ class _Parser:
             while self._peek() != "}":
                 if self._peek() is None:  # pragma: no cover - defensive EOF guard
                     break
-                # Frame name or special command (AssignNAD, FreeFormat, …)
+                # Frame name or special command (AssignNAD, FreeFormat, â€¦)
                 frame_or_cmd = self._expect_identifier()
                 # Commands like AssignNAD have a sub-block
                 if self._peek() == "{":
@@ -708,7 +709,7 @@ class _Parser:
                             self._consume()
                     self._expect("}")
                 else:
-                    # unknown attribute — skip to semicolon
+                    # unknown attribute â€” skip to semicolon
                     while self._peek() not in (";", "}", None):
                         self._consume()
                     if self._peek() == ";":
@@ -719,7 +720,7 @@ class _Parser:
         return attrs
 
     def _skip_block(self) -> None:
-        """Skip a balanced { … } block (already consumed the keyword before)."""
+        """Skip a balanced { â€¦ } block (already consumed the keyword before)."""
         self._expect("{")
         depth = 1
         while depth > 0 and self._peek() is not None:
@@ -754,7 +755,9 @@ def parse_ldf(path: str) -> LDFFile:
     """
     with open(path, "r", encoding="utf-8", errors="replace") as fh:
         content = fh.read()
-    return parse_ldf_string(content)
+    ldf = parse_ldf_string(content)
+    ldf.source_path = str(path)
+    return ldf
 
 
 def parse_ldf_string(content: str) -> LDFFile:
@@ -777,3 +780,4 @@ def parse_ldf_string(content: str) -> LDFFile:
         raise
     except Exception as exc:
         raise LDFParseError(f"Unexpected parse error: {exc}") from exc
+

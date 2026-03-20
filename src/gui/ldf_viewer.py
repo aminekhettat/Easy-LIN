@@ -1,350 +1,37 @@
-"""LDF viewer widget for the preserved PyQt frontend.
+"""Hierarchical LDF viewer widget for the Qt frontend.
 
-Displays the parsed content of an LDF file across multiple sub-tabs covering
-protocol metadata, signals, frames, schedules, and encodings.
+Displays the parsed LDF content as a single expandable tree where values and
+attributes are directly visible under each node.
 
 :author: Amine Khettat
 :company: BLIND SYSTEMS
 :website: https://www.blindsystems.org
-:version: 0.5.0
+:version: 0.5.2
 :copyright: Copyright (c) 2026 Amine Khettat
 :license: Easy-LIN Source-Available License Version 1.0. See LICENSE.
 :disclaimer: Provided "AS IS", without warranties or liability, as described
         in LICENSE.
 """
 
+import logging
+import os
+
 from PyQt5.QtWidgets import (
+    QApplication,
     QWidget,
-    QTabWidget,
     QVBoxLayout,
-    QHBoxLayout,
     QTreeWidget,
     QTreeWidgetItem,
-    QTableWidget,
-    QTableWidgetItem,
-    QLabel,
-    QGroupBox,
     QHeaderView,
+    QShortcut,
+    QAbstractItemView,
 )
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QFont, QColor
+from PyQt5.QtCore import QEvent, Qt
+from PyQt5.QtGui import QFont, QKeySequence
 
-from src.ldf_parser import LDFFile
+from src.ldf_parser import LDFEncodingType, LDFFile
 
-
-# ---------------------------------------------------------------------------
-# Helper: create read-only table item
-# ---------------------------------------------------------------------------
-
-
-def _item(text: str, align: Qt.AlignmentFlag = Qt.AlignLeft | Qt.AlignVCenter) -> QTableWidgetItem:
-    """Create a read-only table item with the requested alignment."""
-    it = QTableWidgetItem(str(text))
-    it.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
-    it.setTextAlignment(align)
-    return it
-
-
-def _bold(text: str) -> QTableWidgetItem:
-    """Create a read-only table item with bold text."""
-    it = _item(text)
-    f = it.font()
-    f.setBold(True)
-    it.setFont(f)
-    return it
-
-
-# ---------------------------------------------------------------------------
-# Overview tab
-# ---------------------------------------------------------------------------
-
-
-class _OverviewTab(QWidget):
-    """Overview tab showing protocol metadata, nodes, and summary counts."""
-
-    def __init__(self, ldf: LDFFile, parent=None):
-        """Build the overview tab showing network metadata and node summary."""
-        super().__init__(parent)
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(12)
-
-        # --- Protocol info ---
-        proto_box = QGroupBox("Protocol Information")
-        proto_layout = QVBoxLayout(proto_box)
-        table = QTableWidget(4, 2)
-        table.setHorizontalHeaderLabels(["Property", "Value"])
-        table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        table.verticalHeader().setVisible(False)
-        table.setEditTriggers(QTableWidget.NoEditTriggers)
-        table.setAlternatingRowColors(True)
-        rows = [
-            ("LIN Protocol Version", ldf.protocol_version),
-            ("LIN Language Version", ldf.language_version),
-            ("Bus Speed", f"{ldf.speed} kbps"),
-            ("Channel Name", ldf.channel_name or "—"),
-        ]
-        for i, (k, v) in enumerate(rows):
-            table.setItem(i, 0, _bold(k))
-            table.setItem(i, 1, _item(v))
-        table.setFixedHeight(table.rowHeight(0) * 4 + table.horizontalHeader().height() + 4)
-        proto_layout.addWidget(table)
-        layout.addWidget(proto_box)
-
-        # --- Nodes ---
-        if ldf.nodes:
-            node_box = QGroupBox("Nodes")
-            node_layout = QVBoxLayout(node_box)
-            tree = QTreeWidget()
-            tree.setHeaderLabels(["Name", "Role", "Details"])
-            tree.header().setSectionResizeMode(QHeaderView.ResizeToContents)
-            tree.setAlternatingRowColors(True)
-            m = ldf.nodes.master
-            master_item = QTreeWidgetItem(
-                [
-                    m.name,
-                    "Master",
-                    f"Time base: {m.time_base} ms  |  Jitter: {m.jitter} ms",
-                ]
-            )
-            master_item.setForeground(0, QColor("#005B9F"))
-            tree.addTopLevelItem(master_item)
-            for slave in ldf.nodes.slaves:
-                slave_item = QTreeWidgetItem([slave, "Slave", ""])
-                slave_item.setForeground(0, QColor("#3A7D44"))
-                tree.addTopLevelItem(slave_item)
-            tree.expandAll()
-            node_layout.addWidget(tree)
-            layout.addWidget(node_box)
-
-        # --- Summary numbers ---
-        stats_box = QGroupBox("Network Summary")
-        stats_layout = QHBoxLayout(stats_box)
-        for label, value in [
-            ("Signals", str(len(ldf.signals))),
-            ("Frames", str(len(ldf.frames))),
-            ("Schedule Tables", str(len(ldf.schedule_tables))),
-            ("Encoding Types", str(len(ldf.encoding_types))),
-        ]:
-            cell = QWidget()
-            cell_vl = QVBoxLayout(cell)
-            cell_vl.setContentsMargins(8, 4, 8, 4)
-            num_label = QLabel(value)
-            num_font = QFont()
-            num_font.setPointSize(20)
-            num_font.setBold(True)
-            num_label.setFont(num_font)
-            num_label.setAlignment(Qt.AlignCenter)
-            num_label.setStyleSheet("color: #005B9F;")
-            lbl = QLabel(label)
-            lbl.setAlignment(Qt.AlignCenter)
-            cell_vl.addWidget(num_label)
-            cell_vl.addWidget(lbl)
-            stats_layout.addWidget(cell)
-        layout.addWidget(stats_box)
-        layout.addStretch()
-
-
-# ---------------------------------------------------------------------------
-# Signals tab
-# ---------------------------------------------------------------------------
-
-
-class _SignalsTab(QWidget):
-    """Signals tab showing the flat signal table."""
-
-    def __init__(self, ldf: LDFFile, parent=None):
-        """Build the signals table tab."""
-        super().__init__(parent)
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
-
-        cols = ["Signal Name", "Size (bits)", "Init Value", "Publisher", "Subscribers"]
-        table = QTableWidget(len(ldf.signals), len(cols))
-        table.setHorizontalHeaderLabels(cols)
-        table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        table.verticalHeader().setVisible(False)
-        table.setEditTriggers(QTableWidget.NoEditTriggers)
-        table.setAlternatingRowColors(True)
-        table.setSortingEnabled(True)
-
-        for row, sig in enumerate(ldf.signals):
-            table.setItem(row, 0, _item(sig.name))
-            table.setItem(row, 1, _item(str(sig.size), Qt.AlignCenter | Qt.AlignVCenter))
-            table.setItem(
-                row,
-                2,
-                _item(
-                    f"0x{sig.init_value:X} ({sig.init_value})",
-                    Qt.AlignCenter | Qt.AlignVCenter,
-                ),
-            )
-            table.setItem(row, 3, _item(sig.publisher))
-            table.setItem(row, 4, _item(", ".join(sig.subscribers)))
-
-        layout.addWidget(table)
-
-
-# ---------------------------------------------------------------------------
-# Frames tab
-# ---------------------------------------------------------------------------
-
-
-class _FramesTab(QWidget):
-    """Frames tab showing frames and their nested signal placements."""
-
-    def __init__(self, ldf: LDFFile, parent=None):
-        """Build the frames tab and nested signal tree."""
-        super().__init__(parent)
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
-
-        tree = QTreeWidget()
-        tree.setHeaderLabels(["Name / Signal", "Frame ID", "Publisher", "Size", "Bit Offset"])
-        tree.header().setSectionResizeMode(0, QHeaderView.Stretch)
-        for c in (1, 2, 3, 4):
-            tree.header().setSectionResizeMode(c, QHeaderView.ResizeToContents)
-        tree.setAlternatingRowColors(True)
-
-        for frame in ldf.frames:
-            top = QTreeWidgetItem(
-                [
-                    frame.name,
-                    f"0x{frame.frame_id:02X}  ({frame.frame_id})",
-                    frame.publisher,
-                    f"{frame.frame_size} byte{'s' if frame.frame_size != 1 else ''}",
-                    "",
-                ]
-            )
-            top.setFont(0, _bold_font())
-            top.setBackground(0, QColor("#EEF4FB"))
-            for sig_ref in frame.signals:
-                child = QTreeWidgetItem(
-                    [
-                        f"  ↳ {sig_ref.signal_name}",
-                        "",
-                        "",
-                        "",
-                        str(sig_ref.bit_offset),
-                    ]
-                )
-                child.setForeground(0, QColor("#3A7D44"))
-                top.addChild(child)
-            tree.addTopLevelItem(top)
-
-        tree.expandAll()
-        layout.addWidget(tree)
-
-
-# ---------------------------------------------------------------------------
-# Schedules tab
-# ---------------------------------------------------------------------------
-
-
-class _SchedulesTab(QWidget):
-    """Schedules tab showing schedule tables and referenced frames."""
-
-    def __init__(self, ldf: LDFFile, parent=None):
-        """Build the schedule tables tab."""
-        super().__init__(parent)
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
-
-        tree = QTreeWidget()
-        tree.setHeaderLabels(["Schedule / Frame", "Delay (ms)", "Frame ID"])
-        tree.header().setSectionResizeMode(0, QHeaderView.Stretch)
-        for c in (1, 2):
-            tree.header().setSectionResizeMode(c, QHeaderView.ResizeToContents)
-        tree.setAlternatingRowColors(True)
-
-        for sched in ldf.schedule_tables:
-            top = QTreeWidgetItem([sched.name, "", ""])
-            top.setFont(0, _bold_font())
-            top.setBackground(0, QColor("#EEF4FB"))
-            for entry in sched.entries:
-                frame = ldf.frame_by_name(entry.frame_name)
-                fid = f"0x{frame.frame_id:02X}" if frame else "—"
-                child = QTreeWidgetItem(
-                    [
-                        f"  ↳ {entry.frame_name}",
-                        str(entry.delay),
-                        fid,
-                    ]
-                )
-                top.addChild(child)
-            tree.addTopLevelItem(top)
-
-        tree.expandAll()
-        layout.addWidget(tree)
-
-
-# ---------------------------------------------------------------------------
-# Encodings tab
-# ---------------------------------------------------------------------------
-
-
-class _EncodingsTab(QWidget):
-    """Encodings tab showing encoding types and signal representations."""
-
-    def __init__(self, ldf: LDFFile, parent=None):
-        """Build the encoding types and signal representation tab."""
-        super().__init__(parent)
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
-
-        tree = QTreeWidget()
-        tree.setHeaderLabels(["Encoding Type / Entry", "Details"])
-        tree.header().setSectionResizeMode(0, QHeaderView.Stretch)
-        tree.header().setSectionResizeMode(1, QHeaderView.Stretch)
-        tree.setAlternatingRowColors(True)
-
-        for enc in ldf.encoding_types:
-            top = QTreeWidgetItem([enc.name, ""])
-            top.setFont(0, _bold_font())
-            top.setBackground(0, QColor("#EEF4FB"))
-            for lv in enc.logical_values:
-                child = QTreeWidgetItem(
-                    [
-                        f"  logical: {lv.signal_value}",
-                        f'"{lv.text}"',
-                    ]
-                )
-                child.setForeground(0, QColor("#8B4513"))
-                top.addChild(child)
-            for pr in enc.physical_ranges:
-                child = QTreeWidgetItem(
-                    [
-                        f"  physical: [{pr.min_value}–{pr.max_value}]",
-                        f"× {pr.scale} + {pr.offset}  [{pr.unit}]",
-                    ]
-                )
-                child.setForeground(0, QColor("#005B9F"))
-                top.addChild(child)
-            if enc.bcd:
-                top.addChild(QTreeWidgetItem(["  BCD", ""]))
-            if enc.ascii:
-                top.addChild(QTreeWidgetItem(["  ASCII", ""]))
-            tree.addTopLevelItem(top)
-
-        # Signal representations
-        if ldf.signal_representations:
-            sep = QTreeWidgetItem(["── Signal Representations ──", ""])
-            sep.setFlags(Qt.NoItemFlags)
-            tree.addTopLevelItem(sep)
-            for rep in ldf.signal_representations:
-                top = QTreeWidgetItem([rep.encoding_type, ""])
-                top.setFont(0, _bold_font())
-                for sig_name in rep.signals:
-                    top.addChild(QTreeWidgetItem([f"  ↳ {sig_name}", ""]))
-                tree.addTopLevelItem(top)
-
-        tree.expandAll()
-        layout.addWidget(tree)
-
-
-# ---------------------------------------------------------------------------
-# Public widget
-# ---------------------------------------------------------------------------
+log = logging.getLogger(__name__)
 
 
 def _bold_font() -> QFont:
@@ -354,35 +41,618 @@ def _bold_font() -> QFont:
     return f
 
 
-class LDFViewer(QTabWidget):
-    """
-    A tab widget that displays every section of a parsed :class:`LDFFile`.
-
-    Usage::
-
-        viewer = LDFViewer(ldf)
-        main_window.setCentralWidget(viewer)
-    """
+class LDFViewer(QWidget):
+    """Single-pane hierarchical LDF viewer with direct attribute nodes."""
 
     def __init__(self, ldf: LDFFile, parent=None):
-        """Initialize the tab widget for a parsed LDF file."""
+        """Initialize the viewer for one parsed LDF object."""
         super().__init__(parent)
         self._ldf = ldf
-        self._build_tabs()
+        self._suppress_toggle_announcements = False
+        self._debug_tree = os.environ.get("EASYLIN_DEBUG_TREE", "0").lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        self._build_ui()
+        self._populate()
 
-    def _build_tabs(self) -> None:
-        """Populate tabs from the currently loaded parsed LDF."""
+    def _build_ui(self) -> None:
+        """Create the tree widget layout."""
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(8, 8, 8, 8)
+
+        self._tree = QTreeWidget()
+        self._tree.setHeaderLabels(["Hierarchy"])
+        self._tree.setAlternatingRowColors(True)
+        self._tree.header().setSectionResizeMode(0, QHeaderView.Stretch)
+        self._tree.setFocusPolicy(Qt.StrongFocus)
+        self._tree.setAccessibleName("LDF hierarchy tree")
+        self._tree.setAccessibleDescription(
+            "Tree view of nodes, frames, signals, encodings, schedules, and attributes"
+        )
+        self._tree.setStyleSheet("QTreeWidget:focus { border: 2px solid #005A9C; }")
+
+        self._copy_shortcut = QShortcut(QKeySequence.Copy, self._tree)
+        self._copy_shortcut.setContext(Qt.WidgetWithChildrenShortcut)
+        self._copy_shortcut.activated.connect(self.copy_current_item_to_clipboard)
+
+        # Keep keyboard cursor aligned with the toggled branch and narrate state changes.
+        self._tree.itemExpanded.connect(self._on_item_expanded)
+        self._tree.itemCollapsed.connect(self._on_item_collapsed)
+        self._tree.currentItemChanged.connect(self._on_current_item_changed)
+        self._tree.installEventFilter(self)
+
+        layout.addWidget(self._tree)
+
+    def eventFilter(self, obj, event):
+        """Stabilize keyboard navigation to avoid focus jumps on branch toggles."""
+        if obj is self._tree and event.type() == QEvent.KeyPress:
+            current = self._tree.currentItem()
+            if current is None:
+                return super().eventFilter(obj, event)
+
+            self._debug_tree_event("KeyPress", current, key=event.key())
+
+            if event.key() == Qt.Key_Right:
+                # Right: expand current branch first; only move down when already expanded.
+                if current.childCount() > 0 and not current.isExpanded():
+                    self._debug_tree_event("Right-expand", current)
+                    self._tree.expandItem(current)
+                    return True
+                if current.isExpanded() and current.childCount() > 0:
+                    self._debug_tree_event("Right-go-child", current.child(0))
+                    self._select_and_reveal_item(current.child(0))
+                    return True
+
+            if event.key() == Qt.Key_Left:
+                # Left: collapse current branch; if already collapsed, go to parent.
+                if current.childCount() > 0 and current.isExpanded():
+                    self._debug_tree_event("Left-collapse", current)
+                    self._tree.collapseItem(current)
+                    return True
+                parent = current.parent()
+                if parent is not None:
+                    self._debug_tree_event("Left-go-parent", parent)
+                    self._select_and_reveal_item(parent)
+                    return True
+
+        return super().eventFilter(obj, event)
+
+    def _select_and_reveal_item(self, item: QTreeWidgetItem) -> None:
+        """Make one tree item current and keep it visible in the viewport."""
+        self._tree.setCurrentItem(item)
+        self._tree.scrollToItem(item, QAbstractItemView.PositionAtCenter)
+        self._debug_tree_event("SelectReveal", item)
+
+    def _on_item_expanded(self, item: QTreeWidgetItem) -> None:
+        """Keep focus on expanded item and announce the open action."""
+        if self._suppress_toggle_announcements:
+            return
+        self._debug_tree_event("Expanded-signal", item)
+        self._select_and_reveal_item(item)
+        self._announce_tree_toggle("Opened", item)
+
+    def _on_item_collapsed(self, item: QTreeWidgetItem) -> None:
+        """Keep focus on collapsed item and announce the close action."""
+        if self._suppress_toggle_announcements:
+            return
+        self._debug_tree_event("Collapsed-signal", item)
+        self._select_and_reveal_item(item)
+        self._announce_tree_toggle("Closed", item)
+
+    def _on_current_item_changed(
+        self,
+        current: QTreeWidgetItem | None,
+        _previous: QTreeWidgetItem | None,
+    ) -> None:
+        """Keep the focused row visible while keyboard navigation moves across the tree."""
+        if current is not None:
+            self._tree.scrollToItem(current, QAbstractItemView.PositionAtCenter)
+            self._debug_tree_event("CurrentChanged", current)
+
+    def _announce_tree_toggle(self, action: str, item: QTreeWidgetItem) -> None:
+        """Emit audible + textual feedback when a branch is opened/closed."""
+        QApplication.beep()
+        self._announce_status(f"{action}: {item.text(0)}")
+        self._debug_tree_event(f"Announce-{action}", item)
+
+    def _debug_tree_event(
+        self, event_name: str, item: QTreeWidgetItem, key: int | None = None
+    ) -> None:
+        """Emit structured tree-navigation diagnostics when EASYLIN_DEBUG_TREE is enabled."""
+        if not self._debug_tree:
+            return
+        parts = []
+        node = item
+        while node is not None:
+            parts.append(node.text(0))
+            node = node.parent()
+        parts.reverse()
+        key_text = f" key={key}" if key is not None else ""
+        log.info(
+            "[TREE] %s%s | current='%s' | path=%s",
+            event_name,
+            key_text,
+            item.text(0),
+            " > ".join(parts),
+        )
+
+    def _add_item(
+        self,
+        parent: QTreeWidgetItem | QTreeWidget,
+        element: str,
+        value: str = "",
+        bold: bool = False,
+    ) -> QTreeWidgetItem:
+        """Add one row to the hierarchy tree."""
+        label = f"{element}: {value}" if value else element
+        item = QTreeWidgetItem([label])
+        if bold:
+            item.setFont(0, _bold_font())
+        if isinstance(parent, QTreeWidget):
+            parent.addTopLevelItem(item)
+        else:
+            parent.addChild(item)
+        return item
+
+    def _add_property_nodes(self, parent: QTreeWidgetItem, props: list[tuple[str, str]]) -> None:
+        """Append attribute/value pairs directly as children in the tree."""
+        for key, val in props:
+            self._add_item(parent, key, val)
+
+    def _build_signal_encoding_map(self) -> dict[str, str]:
+        """Map signal name to encoding type name for quick lookup."""
+        mapping: dict[str, str] = {}
+        for rep in self._ldf.signal_representations:
+            for sig_name in rep.signals:
+                mapping[sig_name] = rep.encoding_type
+        return mapping
+
+    def _build_encoding_lookup(self) -> dict[str, LDFEncodingType]:
+        """Map encoding type name to encoding object."""
+        return {enc.name: enc for enc in self._ldf.encoding_types}
+
+    def _add_encoding_details(
+        self,
+        signal_item: QTreeWidgetItem,
+        encoding_name: str,
+        encoding_lookup: dict[str, LDFEncodingType],
+    ) -> None:
+        """Attach encoding details under one signal's Encoding node."""
+        encoding_item = self._add_item(signal_item, "Encoding", encoding_name)
+        if encoding_name == "none":
+            self._add_item(encoding_item, "Details", "No signal encoding mapping")
+            return
+
+        enc = encoding_lookup.get(encoding_name)
+        if enc is None:
+            self._add_item(encoding_item, "Details", "Encoding definition not found")
+            return
+
+        self._add_property_nodes(
+            encoding_item,
+            [
+                ("BCD", "yes" if enc.bcd else "no"),
+                ("ASCII", "yes" if enc.ascii else "no"),
+                ("Logical values count", str(len(enc.logical_values))),
+                ("Physical ranges count", str(len(enc.physical_ranges))),
+            ],
+        )
+
+        logical_root = self._add_item(encoding_item, "Logical values")
+        if not enc.logical_values:
+            self._add_item(logical_root, "none")
+        for lv in enc.logical_values:
+            self._add_item(logical_root, str(lv.signal_value), lv.text)
+
+        physical_root = self._add_item(encoding_item, "Physical ranges")
+        if not enc.physical_ranges:
+            self._add_item(physical_root, "none")
+        for pr in enc.physical_ranges:
+            unit = pr.unit if pr.unit else "none"
+            pr_item = self._add_item(physical_root, f"{pr.min_value}..{pr.max_value}")
+            self._add_property_nodes(
+                pr_item,
+                [
+                    ("Scale", str(pr.scale)),
+                    ("Offset", str(pr.offset)),
+                    ("Unit", unit),
+                    ("Formula", f"physical = (raw * {pr.scale}) + {pr.offset}"),
+                ],
+            )
+
+    def _frame_related_to_slave(self, frame_name: str, slave_name: str) -> bool:
+        """Return whether a frame is related to a slave by publisher or subscriber links."""
+        frame = self._ldf.frame_by_name(frame_name)
+        if frame is None:
+            return False
+        if frame.publisher == slave_name:
+            return True
+        for ref in frame.signals:
+            sig = self._ldf.signal(ref.signal_name)
+            if sig and slave_name in sig.subscribers:
+                return True
+        return False
+
+    @staticmethod
+    def _is_diagnostic_frame_id(frame_id: int) -> bool:
+        """Return whether a frame ID is reserved for LIN diagnostic traffic."""
+        return frame_id in (0x3C, 0x3D)
+
+    @staticmethod
+    def _lin_protected_id(frame_id: int) -> int:
+        """Compute the LIN 2.x protected identifier (appends parity bits P0/P1)."""
+        fid = frame_id & 0x3F
+        id0, id1, id2, id3, id4, id5 = ((fid >> i) & 1 for i in range(6))
+        p0 = (id0 ^ id1 ^ id2 ^ id4) & 1
+        p1 = (~(id1 ^ id3 ^ id4 ^ id5)) & 1
+        return fid | (p0 << 6) | (p1 << 7)
+
+    def _build_periodicity_map(self) -> dict[str, list[tuple[str, float]]]:
+        """Map frame_name to a list of (table_name, delay_ms) from all schedule tables."""
+        result: dict[str, list[tuple[str, float]]] = {}
+        for table in self._ldf.schedule_tables:
+            for entry in table.entries:
+                result.setdefault(entry.frame_name, []).append((table.name, entry.delay))
+        return result
+
+    def _add_frame_signal_details(
+        self,
+        parent: QTreeWidgetItem,
+        frame,
+        signal_encoding: dict[str, str],
+        encoding_lookup: dict[str, LDFEncodingType],
+        context_node: str | None = None,
+    ) -> None:
+        """Attach frame signal rows with characteristics and encoding details.
+
+        Args:
+            context_node: When given, a ``Direction`` property (TX/RX) is added
+                          to each signal relative to that node.
+        """
+        if not frame.signals:
+            self._add_item(parent, "Signals", "none")
+            return
+
+        for ref in frame.signals:
+            sig = self._ldf.signal(ref.signal_name)
+            sig_item = self._add_item(parent, ref.signal_name)
+            if sig is None:
+                self._add_property_nodes(
+                    sig_item,
+                    [
+                        ("Bit offset", str(ref.bit_offset)),
+                        ("Details", "Signal definition not found"),
+                    ],
+                )
+                continue
+
+            enc_name = signal_encoding.get(sig.name, "none")
+            props: list[tuple[str, str]] = [
+                ("Bit offset", str(ref.bit_offset)),
+                ("Size", f"{sig.size} bit"),
+                ("Initial value", str(sig.init_value)),
+                ("Publisher", sig.publisher),
+                ("Subscribers", ", ".join(sig.subscribers) or "none"),
+            ]
+            if context_node is not None:
+                if sig.publisher == context_node:
+                    props.append(("Direction", "TX (Publisher)"))
+                elif context_node in sig.subscribers:
+                    props.append(("Direction", "RX (Subscriber)"))
+                else:
+                    props.append(("Direction", "Observer (no direct link)"))
+            self._add_property_nodes(sig_item, props)
+            self._add_encoding_details(sig_item, enc_name, encoding_lookup)
+
+    def _populate(self) -> None:
+        """Populate the full LDF hierarchy in one expandable tree."""
         ldf = self._ldf
-        self.addTab(_OverviewTab(ldf), "📋 Overview")
-        self.addTab(_SignalsTab(ldf), f"〜 Signals ({len(ldf.signals)})")
-        self.addTab(_FramesTab(ldf), f"▤ Frames ({len(ldf.frames)})")
-        self.addTab(_SchedulesTab(ldf), f"⏱ Schedules ({len(ldf.schedule_tables)})")
-        if ldf.encoding_types or ldf.signal_representations:
-            self.addTab(_EncodingsTab(ldf), "⚙ Encodings")
+        self._tree.clear()
+        signal_encoding = self._build_signal_encoding_map()
+        encoding_lookup = self._build_encoding_lookup()
+        periodicity_map = self._build_periodicity_map()
+
+        root = self._add_item(self._tree, "LDF cluster", ldf.source_path or "", bold=True)
+
+        header = self._add_item(root, "Header", "", bold=True)
+        self._add_property_nodes(
+            header,
+            [
+                ("Protocol version", ldf.protocol_version),
+                ("Language version", ldf.language_version),
+                ("Baudrate", f"{ldf.speed} kbps"),
+                ("Channel name", ldf.channel_name or "not defined"),
+            ],
+        )
+
+        nodes = self._add_item(root, "Nodes", "", bold=True)
+        if ldf.nodes:
+            master = self._add_item(nodes, f"Master: {ldf.nodes.master.name}")
+            self._add_property_nodes(
+                master,
+                [
+                    ("Time base", f"{ldf.nodes.master.time_base} ms"),
+                    ("Jitter", f"{ldf.nodes.master.jitter} ms"),
+                ],
+            )
+            master_name = ldf.nodes.master.name
+            master_frames = self._add_item(master, "Published frames")
+            master_related = [f for f in ldf.frames if f.publisher == master_name]
+            if not master_related:
+                self._add_item(master_frames, "none")
+            for frame in master_related:
+                pid = self._lin_protected_id(frame.frame_id)
+                frame_item = self._add_item(
+                    master_frames,
+                    frame.name,
+                    f"0x{frame.frame_id:02X} ({frame.frame_size} byte(s))",
+                )
+                periods = periodicity_map.get(frame.name, [])
+                period_text = (
+                    ", ".join(f"{d} ms [{t}]" for t, d in periods) if periods else "not scheduled"
+                )
+                self._add_property_nodes(
+                    frame_item,
+                    [
+                        ("Frame ID", f"0x{frame.frame_id:02X} ({frame.frame_id} decimal)"),
+                        ("Protected ID (PID)", f"0x{pid:02X} ({pid} decimal)"),
+                        ("Publisher", frame.publisher),
+                        ("Direction", "TX (Master publishes)"),
+                        ("Frame size", f"{frame.frame_size} byte(s)"),
+                        ("Periodicity", period_text),
+                    ],
+                )
+                self._add_frame_signal_details(
+                    frame_item, frame, signal_encoding, encoding_lookup, context_node=master_name
+                )
+
+            slaves = self._add_item(nodes, "Slaves")
+            for slave in ldf.nodes.slaves:
+                slave_item = self._add_item(slaves, slave)
+                slave_frames = self._add_item(slave_item, "Related frames")
+                related_frames = [
+                    frame for frame in ldf.frames if self._frame_related_to_slave(frame.name, slave)
+                ]
+                if not related_frames:
+                    self._add_item(slave_frames, "none")
+                for frame in related_frames:
+                    pid = self._lin_protected_id(frame.frame_id)
+                    direction = (
+                        "TX (Slave publishes)"
+                        if frame.publisher == slave
+                        else "RX (Slave subscribes)"
+                    )
+                    periods = periodicity_map.get(frame.name, [])
+                    period_text = (
+                        ", ".join(f"{d} ms [{t}]" for t, d in periods)
+                        if periods
+                        else "not scheduled"
+                    )
+                    frame_item = self._add_item(
+                        slave_frames,
+                        frame.name,
+                        f"0x{frame.frame_id:02X} ({frame.frame_size} byte(s))",
+                    )
+                    self._add_property_nodes(
+                        frame_item,
+                        [
+                            ("Frame ID", f"0x{frame.frame_id:02X} ({frame.frame_id} decimal)"),
+                            ("Protected ID (PID)", f"0x{pid:02X} ({pid} decimal)"),
+                            ("Publisher", frame.publisher),
+                            ("Direction", direction),
+                            ("Frame size", f"{frame.frame_size} byte(s)"),
+                            ("Periodicity", period_text),
+                        ],
+                    )
+                    self._add_frame_signal_details(
+                        frame_item, frame, signal_encoding, encoding_lookup, context_node=slave
+                    )
+
+        diagnostic_frames = [
+            frame for frame in ldf.frames if self._is_diagnostic_frame_id(frame.frame_id)
+        ]
+        diagnostics = self._add_item(
+            root,
+            f"Diagnostic frames ({len(diagnostic_frames)})",
+            "",
+            bold=True,
+        )
+        for frame in diagnostic_frames:
+            pid = self._lin_protected_id(frame.frame_id)
+            periods = periodicity_map.get(frame.name, [])
+            period_text = (
+                ", ".join(f"{d} ms [{t}]" for t, d in periods) if periods else "not scheduled"
+            )
+            frame_item = self._add_item(
+                diagnostics,
+                frame.name,
+                f"0x{frame.frame_id:02X} ({frame.frame_size} byte(s))",
+            )
+            self._add_property_nodes(
+                frame_item,
+                [
+                    ("Frame ID", f"0x{frame.frame_id:02X} ({frame.frame_id} decimal)"),
+                    ("Protected ID (PID)", f"0x{pid:02X} ({pid} decimal)"),
+                    ("Publisher", frame.publisher),
+                    ("Frame size", f"{frame.frame_size} byte(s)"),
+                    ("Periodicity", period_text),
+                ],
+            )
+            self._add_frame_signal_details(frame_item, frame, signal_encoding, encoding_lookup)
+
+        non_diag_frames = [f for f in ldf.frames if not self._is_diagnostic_frame_id(f.frame_id)]
+        frames = self._add_item(root, f"Frames ({len(non_diag_frames)})", "", bold=True)
+        for frame in non_diag_frames:
+            pid = self._lin_protected_id(frame.frame_id)
+            periods = periodicity_map.get(frame.name, [])
+            period_text = (
+                ", ".join(f"{d} ms [{t}]" for t, d in periods) if periods else "not scheduled"
+            )
+            frame_item = self._add_item(frames, frame.name)
+            self._add_property_nodes(
+                frame_item,
+                [
+                    ("Frame ID", f"0x{frame.frame_id:02X} ({frame.frame_id} decimal)"),
+                    ("Protected ID (PID)", f"0x{pid:02X} ({pid} decimal)"),
+                    ("Publisher", frame.publisher),
+                    ("Frame size", f"{frame.frame_size} byte(s)"),
+                    ("Periodicity", period_text),
+                ],
+            )
+            self._add_frame_signal_details(frame_item, frame, signal_encoding, encoding_lookup)
+
+        rep_map: dict[str, list[str]] = {}
+        for rep in ldf.signal_representations:
+            rep_map.setdefault(rep.encoding_type, []).extend(rep.signals)
+
+        encodings = self._add_item(
+            root,
+            f"Encoding types ({len(ldf.encoding_types)})",
+            "",
+            bold=True,
+        )
+        for enc in ldf.encoding_types:
+            enc_item = self._add_item(encodings, enc.name)
+            self._add_property_nodes(
+                enc_item,
+                [
+                    ("BCD", "yes" if enc.bcd else "no"),
+                    ("ASCII", "yes" if enc.ascii else "no"),
+                    (
+                        "Applied signals",
+                        ", ".join(rep_map.get(enc.name, [])) or "none",
+                    ),
+                ],
+            )
+
+            logical_root = self._add_item(enc_item, "Logical values")
+            for lv in enc.logical_values:
+                lv_item = self._add_item(logical_root, str(lv.signal_value), lv.text)
+                self._add_property_nodes(lv_item, [("Text", lv.text)])
+
+            physical_root = self._add_item(enc_item, "Physical ranges")
+            for pr in enc.physical_ranges:
+                unit = pr.unit if pr.unit else "none"
+                pr_item = self._add_item(physical_root, f"{pr.min_value}..{pr.max_value}")
+                self._add_property_nodes(
+                    pr_item,
+                    [
+                        ("Scale", str(pr.scale)),
+                        ("Offset", str(pr.offset)),
+                        ("Unit", unit),
+                        ("Formula", f"physical = (raw * {pr.scale}) + {pr.offset}"),
+                    ],
+                )
+
+        reps = self._add_item(
+            root,
+            f"Signal representations ({len(ldf.signal_representations)})",
+            "",
+            bold=True,
+        )
+        for rep in ldf.signal_representations:
+            rep_item = self._add_item(reps, rep.encoding_type)
+            for sig_name in rep.signals:
+                self._add_item(rep_item, sig_name)
+
+        schedules = self._add_item(
+            root,
+            f"Schedule tables ({len(ldf.schedule_tables)})",
+            "",
+            bold=True,
+        )
+        for table in ldf.schedule_tables:
+            table_item = self._add_item(schedules, table.name)
+            self._add_item(table_item, "Entries", str(len(table.entries)))
+            for idx, entry in enumerate(table.entries, start=1):
+                frame = ldf.frame_by_name(entry.frame_name)
+                frame_id = f"0x{frame.frame_id:02X}" if frame else "unknown"
+                entry_item = self._add_item(table_item, f"{idx}. {entry.frame_name}")
+                self._add_property_nodes(
+                    entry_item,
+                    [
+                        ("Delay", f"{entry.delay} ms"),
+                        ("Frame ID", frame_id),
+                    ],
+                )
+
+        attrs = self._add_item(
+            root,
+            f"Node attributes ({len(ldf.node_attributes)})",
+            "",
+            bold=True,
+        )
+        for attr in ldf.node_attributes:
+            attr_item = self._add_item(attrs, attr.node_name)
+            self._add_property_nodes(
+                attr_item,
+                [
+                    ("LIN protocol", attr.lin_protocol or "not set"),
+                    ("Configured NAD", str(attr.configured_nad)),
+                    ("Initial NAD", str(attr.initial_nad)),
+                    (
+                        "Product ID",
+                        f"{attr.product_id_supplier}, {attr.product_id_function}, {attr.product_id_variant}",
+                    ),
+                    ("Response error signal", attr.response_error or "not set"),
+                    ("P2 min", f"{attr.p2_min} ms"),
+                    ("ST min", f"{attr.st_min} ms"),
+                    ("N_As timeout", f"{attr.n_as_timeout} ms"),
+                    ("N_Cr timeout", f"{attr.n_cr_timeout} ms"),
+                ],
+            )
+            cfg = self._add_item(attr_item, "Configurable frames")
+            for frame_name in attr.configurable_frames:
+                self._add_item(cfg, frame_name)
+
+        # Expand all levels so every signal attribute and encoding detail is reachable
+        # immediately via keyboard without any manual expand step.
+        self._suppress_toggle_announcements = True
+        try:
+            self._tree.expandToDepth(9)
+        finally:
+            self._suppress_toggle_announcements = False
+        self._tree.setCurrentItem(root)
+
+    def focus_hierarchy_tree(self) -> None:
+        """Move keyboard focus to the hierarchy tree."""
+        self._tree.setFocus(Qt.ShortcutFocusReason)
+
+    def focus_hierarchy_details(self) -> None:
+        """Alias kept for compatibility; details are directly shown in the tree."""
+        self._tree.setFocus(Qt.ShortcutFocusReason)
+
+    def copy_current_item_to_clipboard(self) -> None:
+        """Copy the focused hierarchy row text to the system clipboard."""
+        item = self._tree.currentItem()
+        if item is None:
+            self._announce_status("No hierarchy row selected to copy")
+            return
+
+        text = item.text(0).strip()
+        if not text:
+            self._announce_status("Selected hierarchy row is empty")
+            return
+
+        QApplication.clipboard().setText(text)
+        self._announce_status(f"Copied: {text}")
+
+    def _announce_status(self, message: str) -> None:
+        """Send a short feedback message to the main window status bar when available."""
+        window = self.window()
+        event_announcer = getattr(window, "_announce_event", None)
+        if callable(event_announcer):
+            event_announcer(message)
+            return
+        status_getter = getattr(window, "statusBar", None)
+        if callable(status_getter):
+            status_getter().showMessage(message, 3000)
 
     def refresh(self, ldf: LDFFile) -> None:
-        """Reload the viewer with a new LDF file."""
-        while self.count():
-            self.removeTab(0)
+        """Reload the viewer with a new LDF object."""
         self._ldf = ldf
-        self._build_tabs()
+        self._populate()
+

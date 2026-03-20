@@ -1,12 +1,12 @@
 """Application entry point for Easy-LIN.
 
-:mod:`main` starts the Tk interface by default and can launch the preserved
-PyQt interface with the ``--qt`` switch.
+:mod:`main` starts the PyQt interface by default and can launch the legacy
+Tk interface with the ``--tk`` switch.
 
 :author: Amine Khettat
 :company: BLIND SYSTEMS
 :website: https://www.blindsystems.org
-:version: 0.5.0
+:version: 0.5.2
 :copyright: Copyright (c) 2026 Amine Khettat
 :license: Easy-LIN Source-Available License Version 1.0. See LICENSE.
 :disclaimer: Provided "AS IS", without warranties or liability, as described
@@ -14,6 +14,7 @@ PyQt interface with the ``--qt`` switch.
 """
 
 import logging
+import importlib.util
 import sys
 
 logging.basicConfig(
@@ -25,22 +26,18 @@ logging.basicConfig(
 
 def main() -> None:
     """Launch the requested Easy-LIN user interface."""
-    use_qt = "--qt" in sys.argv
+    use_tk = "--tk" in sys.argv
 
-    if use_qt:
+    if not use_tk:
         from src.main_qt import run_qt_app
 
         run_qt_app(sys.argv)
         return
 
-    try:
-        import tkinter
-
-        getattr(tkinter, "TkVersion", None)
-    except ImportError:
+    if importlib.util.find_spec("tkinter") is None:
         print(
             "ERROR: tkinter is not available.\n"
-            "Install tkinter or run the PyQt variant with: python main.py --qt",
+            "Install tkinter or run the default PyQt interface with: python main.py",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -53,3 +50,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

@@ -1,12 +1,11 @@
-"""PyQt launcher preserved from the alternate integration branch.
+"""Primary PyQt launcher for Easy-LIN.
 
-This module keeps the historical PyQt entry path available for validation and
-comparison with the default Tk application.
+This module starts the default Qt-based interface used by ``main.py``.
 
 :author: Amine Khettat
 :company: BLIND SYSTEMS
 :website: https://www.blindsystems.org
-:version: 0.5.0
+:version: 0.5.2
 :copyright: Copyright (c) 2026 Amine Khettat
 :license: Easy-LIN Source-Available License Version 1.0. See LICENSE.
 :disclaimer: Provided "AS IS", without warranties or liability, as described
@@ -17,7 +16,7 @@ import sys
 
 
 def run_qt_app(argv: list[str] | None = None) -> None:
-    """Start the preserved PyQt application and exit with its return code."""
+    """Start the PyQt application and exit with its return code."""
     if argv is None:
         argv = sys.argv
 
@@ -43,3 +42,4 @@ def run_qt_app(argv: list[str] | None = None) -> None:
             window.load_ldf_file(ldf_arg)
 
     raise SystemExit(app.exec_())
+

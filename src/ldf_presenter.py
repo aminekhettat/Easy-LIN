@@ -6,7 +6,7 @@ by different GUI frontends.
 :author: Amine Khettat
 :company: BLIND SYSTEMS
 :website: https://www.blindsystems.org
-:version: 0.5.0
+:version: 0.5.2
 :copyright: Copyright (c) 2026 Amine Khettat
 :license: Easy-LIN Source-Available License Version 1.0. See LICENSE.
 :disclaimer: Provided "AS IS", without warranties or liability, as described
@@ -196,3 +196,4 @@ def _encoding_summary(encoding: LDFEncodingType) -> str:
         flags.append("ASCII")
     suffix = f", formats: {', '.join(flags)}" if flags else ""
     return f"{logical_count} logical, {physical_count} physical{suffix}"
+
