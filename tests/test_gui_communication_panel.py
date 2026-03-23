@@ -438,6 +438,12 @@ class TestCommunicationPanelLoadLdf:
         assert panel._sched_start_btn.isEnabled() is True
 
     def test_load_ldf_updates_monitor_metadata(self, panel):
+        # Use a Windows-style backslash path to exercise the cross-platform
+        # normalization in _sync_monitor_metadata.  On Linux,
+        # os.path.basename(r"C:\temp\network.ldf") returns the whole string
+        # because '\' is not a separator there; the implementation must call
+        # source_path.replace("\\", "/") before os.path.basename so that the
+        # "LDF File Name" metadata key contains only the bare filename.
         ldf = _make_ldf()
         ldf.source_path = r"C:\temp\network.ldf"
         panel.load_ldf(ldf)
