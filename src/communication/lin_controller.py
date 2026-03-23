@@ -6,7 +6,7 @@ scheduler execution.
 :author: Amine Khettat
 :company: BLIND SYSTEMS
 :website: https://www.blindsystems.org
-:version: 0.6.0
+:version: 0.7.0
 :date: 2026-03-23
 """
 

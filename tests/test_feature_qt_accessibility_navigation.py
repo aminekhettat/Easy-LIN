@@ -204,15 +204,34 @@ def test_qt_hierarchy_and_controls_have_accessible_names(
     """Ensure key widgets expose accessible names/descriptions for assistive tech."""
     ldf = parse_ldf_string(sample_ldf_text)
     viewer = LDFViewer(ldf)
+    assert viewer.accessibleName() == "LDF viewer"
+    assert "navigating the loaded LIN Description File hierarchy" in viewer.accessibleDescription()
+    assert viewer._search_bar.accessibleName() == "Hierarchy search bar"
+    assert "searching text inside the hierarchy tree" in viewer._search_bar.accessibleDescription()
     assert viewer._tree.accessibleName() == "LDF hierarchy tree"
     assert "Tree view" in viewer._tree.accessibleDescription()
+    assert viewer._breadcrumb.accessibleName() == "Current position in hierarchy"
+    assert "Breadcrumb trail" in viewer._breadcrumb.accessibleDescription()
 
     window = main_window_qt.MainWindow()
     window.show()
+    assert window.accessibleName() == "Easy-LIN main window"
+    assert "Main application window" in window.accessibleDescription()
+    assert window._placeholder.accessibleName() == "Welcome placeholder"
+    assert window._sb_ldf.accessibleDescription().startswith("Summarizes the currently loaded LDF")
+    assert window._comm_window.accessibleName() == "Communication window"
     comm = window._comm_window._comm_panel
     assert comm._refresh_btn.accessibleName() == "Refresh hardware channels"
+    assert "Vector LIN hardware channel" in comm._channel_combo.accessibleDescription()
+    assert comm._frame_combo.accessibleName() == "LIN frame selection"
+    assert comm._data_edit.accessibleName() == "Frame payload bytes"
+    assert "hexadecimal values" in comm._data_edit.accessibleDescription()
     assert comm._send_btn.accessibleName() == "Send frame"
     assert comm._sched_start_btn.accessibleName() == "Run schedule"
+    assert comm._changed_only_chk.accessibleName() == "Show only changed received frames"
+    assert "payload changed" in comm._changed_only_chk.accessibleDescription()
+    assert comm._monitor._table.accessibleName() == "Received LIN frame monitor"
+    assert "timestamp in milliseconds" in comm._monitor._table.accessibleDescription()
 
 
 def test_qt_hierarchy_diagnostics_precede_schedule_tables(

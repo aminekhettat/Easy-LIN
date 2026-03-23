@@ -1,6 +1,10 @@
 # Easy-LIN
 
-Current release: 0.6.0
+Current release: 0.7.0
+
+Planned next patch release: 0.7.1
+
+Planned next minor release: 0.8.0
 
 Easy-LIN is an accessibility-first Python application for LIN (Local Interconnect Network) engineering, built with PySide6 (Qt 6).
 
@@ -21,6 +25,7 @@ The GUI is designed for blind and low-vision users:
 - Status bar narration for every event
 - QAccessible event notifications for screen readers
 - Dedicated focus shortcuts for major interface regions
+- Accessible names and descriptions across application-owned windows, dialogs, controls, and monitoring widgets
 
 ## Features
 

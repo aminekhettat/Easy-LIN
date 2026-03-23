@@ -35,6 +35,9 @@ from PySide6.QtWidgets import (
     QPushButton,
     QListWidget,
     QDialogButtonBox,
+    QComboBox,
+    QPlainTextEdit,
+    QTextBrowser,
 )
 from PySide6.QtCore import QSettings
 from PySide6.QtGui import QCloseEvent
@@ -251,6 +254,42 @@ class TestShowAbout:
         monkeypatch.setattr(QDialog, "exec", lambda self: QDialog.DialogCode.Rejected)
         main_window._show_about()
 
+    def test_show_about_sets_accessible_metadata(self, main_window, monkeypatch):
+        captured = {}
+
+        def _fake_exec(dialog):
+            captured["dialog_name"] = dialog.accessibleName()
+            captured["dialog_description"] = dialog.accessibleDescription()
+            about_text = dialog.findChildren(QTextBrowser)[0]
+            captured["about_description"] = about_text.accessibleDescription()
+            close_buttons = [
+                button for button in dialog.findChildren(QPushButton) if "Close" in button.text()
+            ]
+            captured["close_name"] = close_buttons[0].accessibleName()
+            return QDialog.DialogCode.Rejected
+
+        monkeypatch.setattr(QDialog, "exec", _fake_exec)
+
+        main_window._show_about()
+
+        assert captured["dialog_name"] == "About Easy-LIN dialog"
+        assert "Application information" in captured["dialog_description"]
+        assert "Version, author, contact" in captured["about_description"]
+        assert captured["close_name"] == "Close About dialog"
+
+
+class TestMainWindowAccessibilityMetadata:
+    def test_main_window_core_widgets_have_accessible_metadata(self, main_window):
+        assert main_window.accessibleName() == "Easy-LIN main window"
+        assert "Main application window" in main_window.accessibleDescription()
+        assert main_window._placeholder.accessibleName() == "Welcome placeholder"
+        assert main_window._placeholder.accessibleDescription() == "Placeholder view shown before an LDF file is loaded."
+        assert main_window._sb_ldf.accessibleName() == "LDF summary status"
+        assert main_window._sb_ldf.accessibleDescription().strip()
+        assert main_window._sb_issues.accessibleDescription().strip()
+        assert main_window._sb_comm.accessibleDescription().strip()
+        assert main_window._sb_event.accessibleDescription().strip()
+
     def test_show_about_falls_back_to_company_text_when_logo_missing(self, main_window, monkeypatch):
         from src.gui.main_window_qt import APP_COMPANY, MainWindow
 
@@ -274,11 +313,23 @@ class TestShowAbout:
 
 class TestShowAccessibilityHelp:
     def test_show_accessibility_help(self, main_window, monkeypatch):
-        monkeypatch.setattr(
-            QMessageBox, "information",
-            staticmethod(lambda *a, **kw: QMessageBox.StandardButton.Ok),
-        )
+        captured = {}
+
+        def _fake_exec(box):
+            captured["title"] = box.windowTitle()
+            captured["name"] = box.accessibleName()
+            captured["description"] = box.accessibleDescription()
+            captured["text"] = box.text()
+            return QMessageBox.StandardButton.Ok
+
+        monkeypatch.setattr(QMessageBox, "exec", _fake_exec)
+
         main_window._show_accessibility_help()
+
+        assert captured["title"] == "Easy-LIN Accessibility"
+        assert captured["name"] == "Accessibility help dialog"
+        assert "Keyboard shortcut reference" in captured["description"]
+        assert "Ctrl+1: Focus hierarchy tree" in captured["text"]
 
 
 # ---------------------------------------------------------------------------
@@ -478,6 +529,31 @@ class TestCommunicationSelectionFlow:
         assert selection[0] == "M"
         assert selection[1] == ["S1", "S2"]
 
+    def test_prompt_comm_selection_dialog_has_accessible_metadata(self, main_window, monkeypatch):
+        ldf = _make_ldf()
+        ldf.nodes.slaves = ["S1", "S2"]
+        main_window._ldf = ldf
+        captured = {}
+
+        def _fake_exec(dialog):
+            captured["dialog_name"] = dialog.accessibleName()
+            captured["dialog_description"] = dialog.accessibleDescription()
+            master_combo = dialog.findChildren(QComboBox)[0]
+            slave_list = dialog.findChildren(QListWidget)[0]
+            captured["master_name"] = master_combo.accessibleName()
+            captured["slave_name"] = slave_list.accessibleName()
+            captured["focus_widget"] = dialog.focusWidget()
+            return QDialog.DialogCode.Rejected
+
+        monkeypatch.setattr(QDialog, "exec", _fake_exec)
+
+        assert main_window._prompt_comm_selection() is None
+        assert captured["dialog_name"] == "Communication node selection dialog"
+        assert "Choose one master node" in captured["dialog_description"]
+        assert captured["master_name"] == "Communication master selection"
+        assert captured["slave_name"] == "Communication slave selection"
+        assert isinstance(captured["focus_widget"], QComboBox)
+
     def test_ensure_comm_selection_without_ldf(self, main_window):
         main_window._ldf = None
         assert main_window._ensure_comm_selection() is False
@@ -584,6 +660,36 @@ class TestBuildIssuesReportText:
 
 
 class TestIssuesDialogSaveReport:
+    def test_issues_dialog_sets_accessible_metadata(self, main_window, monkeypatch):
+        class FakeIssue:
+            def __init__(self, severity, code, message):
+                self.severity = severity
+                self.code = code
+                self.message = message
+
+        captured = {}
+
+        def _fake_exec(dialog):
+            captured["dialog_name"] = dialog.accessibleName()
+            captured["dialog_description"] = dialog.accessibleDescription()
+            report_view = dialog.findChildren(QPlainTextEdit)[0]
+            captured["report_name"] = report_view.accessibleName()
+            captured["focus_widget"] = dialog.focusWidget()
+            return QDialog.DialogCode.Rejected
+
+        monkeypatch.setattr(QDialog, "exec", _fake_exec)
+
+        result = main_window._show_ldf_issues_dialog(
+            "/my.ldf",
+            [FakeIssue("warning", "W001", "Minor warning")],
+        )
+
+        assert result is False
+        assert captured["dialog_name"] == "LDF validation report dialog"
+        assert "Review validation errors and warnings" in captured["dialog_description"]
+        assert captured["report_name"] == "Validation report"
+        assert isinstance(captured["focus_widget"], QPlainTextEdit)
+
     def test_save_report_oserror_shows_warning(self, main_window, monkeypatch):
         class FakeIssue:
             def __init__(self, severity, code, message):

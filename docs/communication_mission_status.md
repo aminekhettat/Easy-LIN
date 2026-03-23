@@ -2,6 +2,18 @@
 
 Date: 2026-03-23
 
+## Release Versioning
+
+- Current release: `0.7.0`
+- Next patch release target: `0.7.1`
+- Next minor release target: `0.8.0`
+
+Release rationale:
+
+- `0.7.0` is the right current release because the repo accumulated several user-visible feature additions and safeguards since `0.6.0`, not just isolated fixes.
+- `0.7.1` is reserved for tightening diagnostics, integrity checks, and documentation without broadening scope.
+- `0.8.0` is reserved for the next larger communication workflow increment once the hardening line is complete.
+
 ## Completed
 
 - Vendored Vector runtime and docs into project:
@@ -25,19 +37,22 @@ Date: 2026-03-23
   - Communication selection requires one master and at least one slave.
   - Node checkboxes are locked while communication is connected.
   - Wiring and status synchronization handled in `src/gui/main_window_qt.py`.
+- Completed a broad GUI accessibility pass:
+  - Added accessible names and descriptions across application-owned windows, dialogs, toolbars, containers, communication controls, and monitor widgets.
+  - Expanded automated regression coverage for accessibility metadata and dialog behavior.
 - Validation complete after changes:
   - `pytest -q` with strict 100% global coverage
   - `ruff check src/ tests/`
   - `pylint main.py src tests tools`
   - `python -m sphinx -b html docs docs/_build/html`
 
-## Remaining High-Priority Gaps
+## Remaining High-Priority Gaps for 0.7.1
 
 - Remove legacy `python-can` dependency path from communication wording and architecture docs where direct ctypes is now preferred.
 - Add an explicit startup diagnostic in GUI for local DLL provenance (displaying whether DLL loaded from project bundle or system path).
 - Add a small runtime integrity check for vendored binaries (file presence + readable + architecture hint).
 
-## Remaining Medium-Priority Gaps
+## Remaining Medium-Priority Gaps for 0.8.0 Planning
 
 - Add a user-facing export in monitor panel (CSV export action/button) instead of test-only serialization path.
 - Consolidate duplicate integration-style tests where they overlap with existing GUI coverage to reduce maintenance overhead.

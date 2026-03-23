@@ -90,6 +90,10 @@ class TestCommunicationWindowConstruction:
         from src.gui.communication_panel import CommunicationPanel
         assert isinstance(comm_window._comm_panel, CommunicationPanel)
 
+    def test_window_has_accessible_metadata(self, comm_window):
+        assert comm_window.accessibleName() == "Communication window"
+        assert "LIN hardware communication" in comm_window.accessibleDescription()
+
     def test_window_title(self, comm_window):
         assert "Communication" in comm_window.windowTitle()
 

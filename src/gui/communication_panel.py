@@ -6,7 +6,7 @@ schedule execution, and live frame monitoring.
 :author: Amine Khettat
 :company: BLIND SYSTEMS
 :website: https://www.blindsystems.org
-:version: 0.6.0
+:version: 0.7.0
 :copyright: Copyright (c) 2026 Amine Khettat
 :license: Easy-LIN Source-Available License Version 1.0. See LICENSE.
 :disclaimer: Provided "AS IS", without warranties or liability, as described
@@ -180,6 +180,10 @@ class _FrameMonitor(QWidget):
     def __init__(self, parent=None):
         """Initialize the frame monitor table and clear action."""
         super().__init__(parent)
+        self.setAccessibleName("Frame monitor panel")
+        self.setAccessibleDescription(
+            "Panel containing live LIN frame monitoring, CSV logging, export, and clear actions."
+        )
         self._logging_path: Optional[str] = None
         self._logging_file = None
         self._logging_writer: Optional[csv.writer] = None
@@ -189,20 +193,35 @@ class _FrameMonitor(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         hdr = QHBoxLayout()
-        hdr.addWidget(QLabel("<b>Frame Monitor</b>"))
+        monitor_label = QLabel("<b>Frame Monitor</b>")
+        monitor_label.setAccessibleName("Frame monitor title")
+        monitor_label.setAccessibleDescription(
+            "Section title for the received LIN frame monitor."
+        )
+        hdr.addWidget(monitor_label)
         hdr.addStretch()
         self._log_btn = QPushButton("Start CSV Log")
         self._log_btn.setFixedWidth(100)
         self._log_btn.setAccessibleName("Start or stop CSV logging")
+        self._log_btn.setAccessibleDescription(
+            "Start a live CSV log for newly received LIN frames, or stop the active CSV log."
+        )
         self._log_btn.clicked.connect(self._toggle_csv_logging)
         hdr.addWidget(self._log_btn)
         self._export_btn = QPushButton("Export CSV")
         self._export_btn.setFixedWidth(90)
         self._export_btn.setAccessibleName("Export frame monitor to CSV")
+        self._export_btn.setAccessibleDescription(
+            "Export the frame monitor rows currently shown on screen to a CSV file."
+        )
         self._export_btn.clicked.connect(self._export_csv)
         hdr.addWidget(self._export_btn)
         self._clear_btn = QPushButton("Clear")
         self._clear_btn.setFixedWidth(70)
+        self._clear_btn.setAccessibleName("Clear frame monitor")
+        self._clear_btn.setAccessibleDescription(
+            "Remove all currently displayed rows from the frame monitor table."
+        )
         self._clear_btn.clicked.connect(self._clear)
         hdr.addWidget(self._clear_btn)
         layout.addLayout(hdr)
@@ -216,6 +235,10 @@ class _FrameMonitor(QWidget):
         self._table.verticalHeader().setVisible(False)
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._table.setAlternatingRowColors(True)
+        self._table.setAccessibleName("Received LIN frame monitor")
+        self._table.setAccessibleDescription(
+            "Table of received LIN frames with columns timestamp in milliseconds, frame identifier, data length, hexadecimal payload, and status."
+        )
         layout.addWidget(self._table)
 
     def add_frame(self, frame: ReceivedFrame) -> None:
@@ -457,14 +480,26 @@ class CommunicationPanel(QWidget):
 
     def _build_ui(self) -> None:
         """Create the vertical layout containing controls and frame monitor."""
+        self.setAccessibleName("Communication panel")
+        self.setAccessibleDescription(
+            "Panel for LIN hardware connection, manual frame transmission, schedule execution, and frame monitoring."
+        )
         root = QVBoxLayout(self)
         root.setContentsMargins(8, 8, 8, 8)
         root.setSpacing(8)
 
         splitter = QSplitter(Qt.Orientation.Vertical)
+        splitter.setAccessibleName("Communication layout splitter")
+        splitter.setAccessibleDescription(
+            "Vertical splitter separating communication controls from the live frame monitor."
+        )
 
         # Top half: controls
         controls = QWidget()
+        controls.setAccessibleName("Communication controls container")
+        controls.setAccessibleDescription(
+            "Container grouping connection, transmission, schedule, and monitor option controls."
+        )
         controls_layout = QVBoxLayout(controls)
         controls_layout.setContentsMargins(0, 0, 0, 0)
 
@@ -487,28 +522,48 @@ class CommunicationPanel(QWidget):
     def _build_connection_group(self) -> QGroupBox:
         """Create the hardware connection controls."""
         box = QGroupBox("Hardware Connection")
+        box.setAccessibleName("Hardware connection group")
+        box.setAccessibleDescription(
+            "Group of controls used to choose a hardware channel and connect or disconnect LIN hardware."
+        )
         layout = QHBoxLayout(box)
 
         self._status_led = QLabel("â—")
         self._status_led.setStyleSheet("color: red; font-size: 18px;")
         self._status_led.setAccessibleName("Connection indicator")
-        self._status_led.setAccessibleDescription("Red means disconnected, green means connected")
+        self._status_led.setAccessibleDescription(
+            "Disconnected. Red means disconnected and green means connected."
+        )
         layout.addWidget(self._status_led)
 
         self._channel_combo = QComboBox()
         self._channel_combo.setMinimumWidth(200)
-        layout.addWidget(QLabel("Channel:"))
+        self._channel_combo.setAccessibleName("LIN hardware channel")
+        self._channel_combo.setAccessibleDescription(
+            "Select a Vector LIN hardware channel before connecting."
+        )
+        channel_label = QLabel("Channel:")
+        channel_label.setAccessibleName("Hardware channel label")
+        channel_label.setAccessibleDescription("Label for the LIN hardware channel selection field.")
+        channel_label.setBuddy(self._channel_combo)
+        layout.addWidget(channel_label)
         layout.addWidget(self._channel_combo)
 
         self._refresh_btn = QPushButton("â†» Refresh")
         self._refresh_btn.setFixedWidth(90)
         self._refresh_btn.setAccessibleName("Refresh hardware channels")
+        self._refresh_btn.setAccessibleDescription(
+            "Refresh the list of LIN hardware channels detected by the active backend."
+        )
         self._refresh_btn.clicked.connect(self._refresh_channels)
         layout.addWidget(self._refresh_btn)
 
         self._connect_btn = QPushButton("Connect")
         self._connect_btn.setFixedWidth(90)
         self._connect_btn.setAccessibleName("Connect or disconnect hardware")
+        self._connect_btn.setAccessibleDescription(
+            "Connect to or disconnect from the selected LIN hardware channel."
+        )
         self._connect_btn.setStyleSheet("QPushButton { background-color: #3A7D44; color: white; }")
         self._connect_btn.clicked.connect(self._toggle_connection)
         layout.addWidget(self._connect_btn)
@@ -519,21 +574,45 @@ class CommunicationPanel(QWidget):
     def _build_tx_group(self) -> QGroupBox:
         """Create the manual frame transmission controls."""
         box = QGroupBox("Send Frame (Manual)")
+        box.setAccessibleName("Manual frame transmission group")
+        box.setAccessibleDescription(
+            "Group of controls used to choose a LIN frame, enter payload bytes, and send it manually."
+        )
         layout = QHBoxLayout(box)
 
-        layout.addWidget(QLabel("Frame:"))
+        frame_label = QLabel("Frame:")
+        frame_label.setAccessibleName("Frame selection label")
+        frame_label.setAccessibleDescription("Label for the LIN frame selection field.")
+        layout.addWidget(frame_label)
         self._frame_combo = QComboBox()
         self._frame_combo.setMinimumWidth(180)
+        self._frame_combo.setAccessibleName("LIN frame selection")
+        self._frame_combo.setAccessibleDescription(
+            "Select a LIN frame from the loaded LDF before sending it."
+        )
+        frame_label.setBuddy(self._frame_combo)
         self._frame_combo.currentIndexChanged.connect(self._on_frame_selected)
         layout.addWidget(self._frame_combo)
 
-        layout.addWidget(QLabel("Data (hex, space-separated):"))
+        data_label = QLabel("Data (hex, space-separated):")
+        data_label.setAccessibleName("Frame payload label")
+        data_label.setAccessibleDescription("Label for the frame payload entry field.")
+        layout.addWidget(data_label)
         self._data_edit = QLineEdit()
+        self._data_edit.setAccessibleName("Frame payload bytes")
+        self._data_edit.setAccessibleDescription(
+            "Enter frame payload bytes as hexadecimal values separated by spaces, for example 01 FF A0 00."
+        )
         self._data_edit.setPlaceholderText("e.g.  01 FF A0 00")
         self._data_edit.setMinimumWidth(160)
+        data_label.setBuddy(self._data_edit)
         layout.addWidget(self._data_edit)
 
         self._master_response_chk = QCheckBox("Master publishes")
+        self._master_response_chk.setAccessibleName("Master publishes frame data")
+        self._master_response_chk.setAccessibleDescription(
+            "When checked, send the entered bytes as a master-published response. When unchecked, send only the header so a slave can answer."
+        )
         self._master_response_chk.setToolTip(
             "When checked the entered data bytes are sent as a master response.\n"
             "When unchecked a master request header is sent and the slave responds."
@@ -543,6 +622,9 @@ class CommunicationPanel(QWidget):
         self._send_btn = QPushButton("â–¶ Send")
         self._send_btn.setEnabled(False)
         self._send_btn.setAccessibleName("Send frame")
+        self._send_btn.setAccessibleDescription(
+            "Send the selected LIN frame using the current data and publish mode settings."
+        )
         self._send_btn.setStyleSheet(
             "QPushButton:enabled { background-color: #005B9F; color: white; }"
         )
@@ -555,16 +637,31 @@ class CommunicationPanel(QWidget):
     def _build_schedule_group(self) -> QGroupBox:
         """Create the schedule selection and execution controls."""
         box = QGroupBox("Schedule Execution")
+        box.setAccessibleName("Schedule execution group")
+        box.setAccessibleDescription(
+            "Group of controls used to choose, start, and stop schedule tables from the loaded LDF."
+        )
         layout = QHBoxLayout(box)
 
-        layout.addWidget(QLabel("Schedule:"))
+        schedule_label = QLabel("Schedule:")
+        schedule_label.setAccessibleName("Schedule selection label")
+        schedule_label.setAccessibleDescription("Label for the LIN schedule table selection field.")
+        layout.addWidget(schedule_label)
         self._sched_combo = QComboBox()
         self._sched_combo.setMinimumWidth(180)
+        self._sched_combo.setAccessibleName("LIN schedule selection")
+        self._sched_combo.setAccessibleDescription(
+            "Select a schedule table from the loaded LDF to run on the bus."
+        )
+        schedule_label.setBuddy(self._sched_combo)
         layout.addWidget(self._sched_combo)
 
         self._sched_start_btn = QPushButton("â–¶ Run")
         self._sched_start_btn.setEnabled(False)
         self._sched_start_btn.setAccessibleName("Run schedule")
+        self._sched_start_btn.setAccessibleDescription(
+            "Start executing the selected schedule table."
+        )
         self._sched_start_btn.setStyleSheet(
             "QPushButton:enabled { background-color: #005B9F; color: white; }"
         )
@@ -574,6 +671,9 @@ class CommunicationPanel(QWidget):
         self._sched_stop_btn = QPushButton("â–  Stop")
         self._sched_stop_btn.setEnabled(False)
         self._sched_stop_btn.setAccessibleName("Stop schedule")
+        self._sched_stop_btn.setAccessibleDescription(
+            "Stop the currently running schedule table."
+        )
         self._sched_stop_btn.setStyleSheet(
             "QPushButton:enabled { background-color: #8B0000; color: white; }"
         )
@@ -586,10 +686,17 @@ class CommunicationPanel(QWidget):
     def _build_monitor_options_group(self) -> QGroupBox:
         """Create options controlling which received frames are shown."""
         box = QGroupBox("Monitor Options")
+        box.setAccessibleName("Monitor options group")
+        box.setAccessibleDescription(
+            "Group of options controlling how received LIN frames are displayed in the monitor."
+        )
         layout = QHBoxLayout(box)
 
         self._changed_only_chk = QCheckBox("Show only changed frames")
         self._changed_only_chk.setAccessibleName("Show only changed received frames")
+        self._changed_only_chk.setAccessibleDescription(
+            "When checked, show only received frames whose payload changed since the previous reception."
+        )
         self._changed_only_chk.setToolTip(
             "When enabled, only frames whose payload changed are shown in the monitor."
         )
@@ -730,6 +837,9 @@ class CommunicationPanel(QWidget):
                 ldf=self._ldf,
             )
             self._status_led.setStyleSheet("color: green; font-size: 18px;")
+            self._status_led.setAccessibleDescription(
+                "Connected. Red means disconnected and green means connected."
+            )
             self._connect_btn.setText("Disconnect")
             self._connect_btn.setStyleSheet(
                 "QPushButton { background-color: #8B0000; color: white; }"
@@ -754,6 +864,9 @@ class CommunicationPanel(QWidget):
         except Exception as exc:
             log.warning("Disconnect error: %s", exc)
         self._status_led.setStyleSheet("color: red; font-size: 18px;")
+        self._status_led.setAccessibleDescription(
+            "Disconnected. Red means disconnected and green means connected."
+        )
         self._connect_btn.setText("Connect")
         self._connect_btn.setStyleSheet("QPushButton { background-color: #3A7D44; color: white; }")
         self._send_btn.setEnabled(False)

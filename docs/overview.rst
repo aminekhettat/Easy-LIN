@@ -7,7 +7,7 @@ Project Metadata
 - Author: Amine Khettat
 - Company: BLIND SYSTEMS
 - Website: https://www.blindsystems.org
-- Version: 0.6.0
+- Version: 0.7.0
 
 Main Capabilities
 -----------------
@@ -28,7 +28,7 @@ Architecture
   live frame monitoring and start/stop CSV logging
 - **Core:** Framework-agnostic parser, presenter, and consistency modules
 
-Accessibility Features (0.6.0)
+Accessibility Features (0.7.0)
 ------------------------------
 
 - Keyboard-driven navigation with documented shortcuts
@@ -38,14 +38,22 @@ Accessibility Features (0.6.0)
 - Expand/collapse all children (Ctrl+Shift+Right/Left)
 - QAccessible events for screen reader notification
 - RGAA 4.1.2 automatic compliance (16/16 checks)
+- Accessible names and descriptions on application-owned windows, dialogs, major controls, monitor widgets, and hierarchy support elements
 
-Runtime and Selection Safeguards (0.6.0)
+Runtime and Selection Safeguards (0.7.0)
 ----------------------------------------
 
 - Single-instance guard prevents launching a second Easy-LIN process.
 - Communication startup requires one selected master node and at least one selected slave node.
 - Node checkbox selection is locked while communication is connected.
 - Node checkbox selection is unlocked when communication returns to disconnected state.
+
+Release Roadmap
+---------------
+
+- Current release: 0.7.0
+- Next patch release: 0.7.1, focused on runtime diagnostics, integrity checks, and troubleshooting guidance
+- Next minor release: 0.8.0, focused on the next larger communication workflow increment after the 0.7.x hardening line
 
 LIN Runtime Workflows
 ---------------------

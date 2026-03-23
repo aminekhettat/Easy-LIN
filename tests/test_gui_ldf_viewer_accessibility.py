@@ -638,6 +638,30 @@ class TestFireAccessibleEvent:
             assert received[0][0] == "MCU"
             assert received[0][1] == ["SA"]
 
+        def test_uncheck_slave_announces_current_selection(self, qapp):
+            """Changing slave selection should emit a textual status announcement."""
+            from src.gui.ldf_viewer import LDFViewer
+
+            ldf2 = LDFFile(
+                protocol_version="2.1",
+                language_version="2.1",
+                speed=19.2,
+                nodes=LDFNodes(
+                    master=LDFMaster(name="MCU", time_base=5.0, jitter=0.1),
+                    slaves=["SA", "SB"],
+                ),
+                signals=[],
+                frames=[],
+                schedule_tables=[],
+            )
+            ldf2.build_lookups()
+            v2 = LDFViewer(ldf2)
+            v2._announce_status = MagicMock()
+
+            v2._slave_check_items[1].setCheckState(0, Qt.CheckState.Unchecked)
+
+            v2._announce_status.assert_called_with("Excluded slave SB. 1 slave(s) currently selected.")
+
         def test_refresh_recreates_checkboxes(self, viewer):
             """After refresh() the master and slave items are fresh objects."""
             old_master = viewer._master_check_item

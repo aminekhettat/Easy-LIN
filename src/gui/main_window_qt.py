@@ -6,7 +6,7 @@ menus, toolbar, and persistent window state.
 :author: Amine Khettat
 :company: BLIND SYSTEMS
 :website: https://www.blindsystems.org
-:version: 0.6.0
+:version: 0.7.0
 :copyright: Copyright (c) 2026 Amine Khettat
 :license: Easy-LIN Source-Available License Version 1.0. See LICENSE.
 :disclaimer: Provided "AS IS", without warranties or liability, as described
@@ -46,7 +46,7 @@ log = logging.getLogger(__name__)
 
 APP_NAME = "Easy-LIN"
 APP_ORG = "Easy-LIN"
-APP_VERSION = "0.6.0"
+APP_VERSION = "0.7.0"
 APP_AUTHOR = "Amine Khettat"
 APP_COMPANY = "BLIND SYSTEMS"
 APP_CONTACT_EMAIL = "contact@blindsystems.org"
@@ -77,6 +77,10 @@ class MainWindow(QMainWindow):
 
         self.setWindowTitle(APP_NAME)
         self.setMinimumSize(1100, 700)
+        self.setAccessibleName("Easy-LIN main window")
+        self.setAccessibleDescription(
+            "Main application window for loading LDF files, navigating their hierarchy, and opening the communication window."
+        )
 
         self._build_ui()
         self._build_menu()
@@ -92,6 +96,10 @@ class MainWindow(QMainWindow):
         """Create the placeholder central widget, dock, and status bar."""
         # Central placeholder (shown before any LDF is loaded)
         self._placeholder = QWidget()
+        self._placeholder.setAccessibleName("Welcome placeholder")
+        self._placeholder.setAccessibleDescription(
+            "Placeholder view shown before an LDF file is loaded."
+        )
         placeholder_lbl = QLabel(
             "<h2>Welcome to Easy-LIN</h2>"
             "<p>Open an LDF file via <b>File > Open LDF...</b> to get started.</p>"
@@ -102,6 +110,10 @@ class MainWindow(QMainWindow):
         )
         placeholder_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         placeholder_lbl.setTextFormat(Qt.TextFormat.RichText)
+        placeholder_lbl.setAccessibleName("Welcome message")
+        placeholder_lbl.setAccessibleDescription(
+            "Introductory guidance explaining how to open an LDF file and what Easy-LIN can do."
+        )
         font = QFont()
         font.setPointSize(11)
         placeholder_lbl.setFont(font)
@@ -130,6 +142,10 @@ class MainWindow(QMainWindow):
         self._sb_issues.setAccessibleName("LDF issues status")
         self._sb_comm.setAccessibleName("Communication status")
         self._sb_event.setAccessibleName("Latest event status")
+        self._sb_ldf.setAccessibleDescription("Summarizes the currently loaded LDF version, speed, and frame count.")
+        self._sb_issues.setAccessibleDescription("Shows the current number of LDF validation warnings and errors.")
+        self._sb_comm.setAccessibleDescription("Shows whether hardware communication is connected, disconnected, or in error.")
+        self._sb_event.setAccessibleDescription("Shows the latest event or user feedback message from the application.")
 
         self._set_status_label_color(self._sb_ldf, STATUS_COLOR_NEUTRAL)
         self._set_status_label_color(self._sb_issues, STATUS_COLOR_NEUTRAL)
@@ -280,6 +296,8 @@ class MainWindow(QMainWindow):
         tb.setObjectName("MainToolbar")
         tb.setMovable(False)
         tb.setIconSize(QSize(24, 24))
+        tb.setAccessibleName("Main toolbar")
+        tb.setAccessibleDescription("Toolbar containing quick-access actions such as opening an LDF file.")
         tb.addAction(self._open_action)
 
     # ------------------------------------------------------------------
@@ -407,6 +425,10 @@ class MainWindow(QMainWindow):
         dlg = QDialog(self)
         dlg.setWindowTitle(f"{APP_NAME} \u2013 LDF Validation Report")
         dlg.setMinimumSize(640, 420)
+        dlg.setAccessibleName("LDF validation report dialog")
+        dlg.setAccessibleDescription(
+            "Review validation errors and warnings before deciding whether the selected LDF file can be opened."
+        )
 
         layout = QVBoxLayout(dlg)
 
@@ -426,6 +448,7 @@ class MainWindow(QMainWindow):
 
         summary_label = QLabel(summary)
         summary_label.setWordWrap(True)
+        summary_label.setAccessibleName("Validation summary")
         layout.addWidget(summary_label)
 
         report_view = QPlainTextEdit()
@@ -439,13 +462,25 @@ class MainWindow(QMainWindow):
         btn_box = QDialogButtonBox()
         save_btn = btn_box.addButton("Save Report\u2026", QDialogButtonBox.ButtonRole.ActionRole)
         save_btn.setAccessibleName("Save validation report to a file")
+        save_btn.setAccessibleDescription("Save the current validation report to a text file.")
         if has_errors:
             close_btn = btn_box.addButton(QDialogButtonBox.StandardButton.Close)
+            close_btn.setAccessibleName("Close validation report")
+            close_btn.setAccessibleDescription(
+                "Close this validation report. The file cannot be opened until the reported errors are fixed."
+            )
             close_btn.setDefault(True)
         else:
             open_btn = btn_box.addButton("Open Anyway", QDialogButtonBox.ButtonRole.AcceptRole)
             open_btn.setAccessibleName("Open the LDF file despite the warnings")
+            open_btn.setAccessibleDescription(
+                "Continue opening the selected LDF file even though warnings were reported."
+            )
             cancel_btn = btn_box.addButton(QDialogButtonBox.StandardButton.Cancel)
+            cancel_btn.setAccessibleName("Cancel opening the LDF file")
+            cancel_btn.setAccessibleDescription(
+                "Close this validation report without opening the selected LDF file."
+            )
             cancel_btn.setDefault(True)
 
         layout.addWidget(btn_box)
@@ -469,6 +504,13 @@ class MainWindow(QMainWindow):
         save_btn.clicked.connect(_save_report)
         btn_box.accepted.connect(dlg.accept)
         btn_box.rejected.connect(dlg.reject)
+        report_view.setFocus(Qt.FocusReason.OtherFocusReason)
+        dlg.setTabOrder(report_view, save_btn)
+        if has_errors:
+            dlg.setTabOrder(save_btn, close_btn)
+        else:
+            dlg.setTabOrder(save_btn, open_btn)
+            dlg.setTabOrder(open_btn, cancel_btn)
 
         result = dlg.exec()
         if has_errors:
@@ -521,7 +563,6 @@ class MainWindow(QMainWindow):
             empty = QAction("(empty)", self)
             empty.setEnabled(False)
             self._recent_menu.addAction(empty)
-
     # ------------------------------------------------------------------
     # Dialogs
     # ------------------------------------------------------------------
@@ -531,6 +572,10 @@ class MainWindow(QMainWindow):
         dialog = QDialog(self)
         dialog.setWindowTitle(f"About {APP_NAME}")
         dialog.setMinimumWidth(560)
+        dialog.setAccessibleName(f"About {APP_NAME} dialog")
+        dialog.setAccessibleDescription(
+            "Application information, support contacts, and company details for Easy-LIN."
+        )
 
         layout = QVBoxLayout(dialog)
 
@@ -552,13 +597,23 @@ class MainWindow(QMainWindow):
         about_text.setOpenExternalLinks(True)
         about_text.setReadOnly(True)
         about_text.setAccessibleName("About Easy-LIN details")
+        about_text.setAccessibleDescription(
+            "Version, author, contact, website, and product overview for Easy-LIN."
+        )
         about_text.setHtml(self._build_about_html())
         layout.addWidget(about_text)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         buttons.rejected.connect(dialog.reject)
         buttons.accepted.connect(dialog.accept)
+        close_btn = buttons.button(QDialogButtonBox.StandardButton.Close)
+        if close_btn is not None:
+            close_btn.setAccessibleName("Close About dialog")
+            close_btn.setAccessibleDescription("Close the About Easy-LIN dialog.")
         layout.addWidget(buttons)
+        about_text.setFocus(Qt.FocusReason.OtherFocusReason)
+        if close_btn is not None:
+            dialog.setTabOrder(about_text, close_btn)
 
         dialog.exec()
 
@@ -596,9 +651,14 @@ class MainWindow(QMainWindow):
 
     def _show_accessibility_help(self) -> None:
         """Display keyboard shortcuts for accessible navigation."""
-        QMessageBox.information(
-            self,
-            f"{APP_NAME} Accessibility",
+        msg_box = QMessageBox(self)
+        msg_box.setIcon(QMessageBox.Icon.Information)
+        msg_box.setWindowTitle(f"{APP_NAME} Accessibility")
+        msg_box.setAccessibleName("Accessibility help dialog")
+        msg_box.setAccessibleDescription(
+            "Keyboard shortcut reference for navigating the Easy-LIN interface."
+        )
+        msg_box.setText(
             "Keyboard shortcuts:\n\n"
             "Ctrl+O: Open LDF file\n"
             "Ctrl+1: Focus hierarchy tree\n"
@@ -613,8 +673,10 @@ class MainWindow(QMainWindow):
             "F6: Focus next region\n"
             "Shift+F6: Focus previous region\n"
             "F1: Open accessibility help\n\n"
-            "Tip: use Tab and Shift+Tab to move between controls.",
+            "Tip: use Tab and Shift+Tab to move between controls."
         )
+        msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
+        msg_box.exec()
 
     def _resolve_node_choices(self) -> tuple[list[str], list[str]]:
         """Extract candidate masters and slaves from the currently loaded LDF."""
@@ -650,25 +712,51 @@ class MainWindow(QMainWindow):
         dlg = QDialog(self)
         dlg.setWindowTitle("Communication Node Selection")
         dlg.setMinimumWidth(420)
+        dlg.setAccessibleName("Communication node selection dialog")
+        dlg.setAccessibleDescription(
+            "Choose one master node and one or more slave nodes for the communication session."
+        )
         layout = QVBoxLayout(dlg)
 
-        layout.addWidget(QLabel("Select one master:"))
+        master_label = QLabel("Select one master:")
+        layout.addWidget(master_label)
         master_combo = QComboBox()
+        master_combo.setAccessibleName("Communication master selection")
+        master_combo.setAccessibleDescription(
+            "Choose the master node that will control the communication session."
+        )
         for master in masters:
             master_combo.addItem(master)
+        master_label.setBuddy(master_combo)
         layout.addWidget(master_combo)
 
-        layout.addWidget(QLabel("Select at least one slave:"))
+        slave_label = QLabel("Select at least one slave:")
+        layout.addWidget(slave_label)
         slaves_list = QListWidget()
         slaves_list.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
+        slaves_list.setAccessibleName("Communication slave selection")
+        slaves_list.setAccessibleDescription(
+            "Select one or more slave nodes to include in the communication session."
+        )
         for slave in slaves:
             item = QListWidgetItem(slave)
             slaves_list.addItem(item)
         slaves_list.selectAll()
+        slave_label.setBuddy(slaves_list)
         layout.addWidget(slaves_list)
 
         btn_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         layout.addWidget(btn_box)
+        ok_btn = btn_box.button(QDialogButtonBox.StandardButton.Ok)
+        cancel_btn = btn_box.button(QDialogButtonBox.StandardButton.Cancel)
+        if ok_btn is not None:
+            ok_btn.setAccessibleName("Confirm communication node selection")
+            ok_btn.setAccessibleDescription("Apply the selected master and slave nodes.")
+        if cancel_btn is not None:
+            cancel_btn.setAccessibleName("Cancel communication node selection")
+            cancel_btn.setAccessibleDescription(
+                "Close this dialog without changing the communication selection."
+            )
 
         def _accept_if_valid() -> None:
             selected_slaves = [i.text() for i in slaves_list.selectedItems()]
@@ -679,6 +767,12 @@ class MainWindow(QMainWindow):
 
         btn_box.accepted.connect(_accept_if_valid)
         btn_box.rejected.connect(dlg.reject)
+        master_combo.setFocus(Qt.FocusReason.OtherFocusReason)
+        dlg.setTabOrder(master_combo, slaves_list)
+        if ok_btn is not None:
+            dlg.setTabOrder(slaves_list, ok_btn)
+            if cancel_btn is not None:
+                dlg.setTabOrder(ok_btn, cancel_btn)
 
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return None

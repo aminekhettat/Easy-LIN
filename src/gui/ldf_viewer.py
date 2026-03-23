@@ -6,7 +6,7 @@ attributes are directly visible under each node.
 :author: Amine Khettat
 :company: BLIND SYSTEMS
 :website: https://www.blindsystems.org
-:version: 0.6.0
+:version: 0.7.0
 :copyright: Copyright (c) 2026 Amine Khettat
 :license: Easy-LIN Source-Available License Version 1.0. See LICENSE.
 :disclaimer: Provided "AS IS", without warranties or liability, as described
@@ -81,18 +81,30 @@ class LDFViewer(QWidget):
 
     def _build_ui(self) -> None:
         """Create the tree widget layout with search bar and breadcrumb."""
+        self.setAccessibleName("LDF viewer")
+        self.setAccessibleDescription(
+            "Viewer for navigating the loaded LIN Description File hierarchy and selecting communication nodes."
+        )
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
 
         # --- Search bar (hidden by default, toggled with Ctrl+F) ---
         self._search_bar = QWidget()
+        self._search_bar.setAccessibleName("Hierarchy search bar")
+        self._search_bar.setAccessibleDescription(
+            "Container with controls for searching text inside the hierarchy tree."
+        )
         search_layout = QHBoxLayout(self._search_bar)
         search_layout.setContentsMargins(0, 0, 0, 4)
         search_label = QLabel("Search:")
         search_label.setAccessibleName("Search label")
+        search_label.setAccessibleDescription("Label for the hierarchy tree search field.")
         search_layout.addWidget(search_label)
         self._search_edit = QLineEdit()
         self._search_edit.setAccessibleName("Search tree items")
+        self._search_edit.setAccessibleDescription(
+            "Type text to search the hierarchy tree, then press Enter or F3 to move through matches."
+        )
         self._search_edit.setPlaceholderText("Type to search tree items...")
         self._search_edit.setStyleSheet(
             "QLineEdit:focus { border: 2px solid #005A9C; }"
@@ -103,6 +115,9 @@ class LDFViewer(QWidget):
         self._search_close_btn = QPushButton("Close")
         self._search_close_btn.setFixedWidth(60)
         self._search_close_btn.setAccessibleName("Close search bar")
+        self._search_close_btn.setAccessibleDescription(
+            "Hide the search bar and return keyboard focus to the hierarchy tree."
+        )
         self._search_close_btn.clicked.connect(self._hide_search)
         search_layout.addWidget(self._search_close_btn)
         self._search_bar.setVisible(False)
@@ -113,6 +128,9 @@ class LDFViewer(QWidget):
         # --- Breadcrumb trail ---
         self._breadcrumb = QLabel("")
         self._breadcrumb.setAccessibleName("Current position in hierarchy")
+        self._breadcrumb.setAccessibleDescription(
+            "Breadcrumb trail showing the current hierarchy path and sibling position."
+        )
         self._breadcrumb.setWordWrap(True)
         self._breadcrumb.setStyleSheet(
             "QLabel { color: #333; padding: 2px 4px; "
@@ -937,6 +955,10 @@ class LDFViewer(QWidget):
             return
         master, slaves = self.selected_nodes()
         if master and slaves:
+            action = "Selected" if item.checkState(0) == Qt.CheckState.Checked else "Excluded"
+            self._announce_status(
+                f"{action} slave {item.text(0)}. {len(slaves)} slave(s) currently selected."
+            )
             self.node_selection_changed.emit(master, slaves)
 
     def selected_nodes(self) -> tuple[str | None, list[str]]:

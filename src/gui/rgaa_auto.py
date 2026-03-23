@@ -72,9 +72,18 @@ def evaluate_main_window_automatic_rgaa(main_window) -> RGAAAutoComplianceReport
     # Labeling checks (RGAA form/script assistive-tech spirit)
     checks.append(bool(comm and comm._refresh_btn.accessibleName().strip()))
     checks.append(bool(comm and comm._connect_btn.accessibleName().strip()))
+    checks.append(bool(comm and comm._channel_combo.accessibleName().strip()))
+    checks.append(bool(comm and comm._channel_combo.accessibleDescription().strip()))
     checks.append(bool(comm and comm._send_btn.accessibleName().strip()))
+    checks.append(bool(comm and comm._frame_combo.accessibleName().strip()))
+    checks.append(bool(comm and comm._data_edit.accessibleName().strip()))
+    checks.append(bool(comm and comm._data_edit.accessibleDescription().strip()))
     checks.append(bool(comm and comm._sched_start_btn.accessibleName().strip()))
     checks.append(bool(comm and comm._sched_stop_btn.accessibleName().strip()))
+    checks.append(bool(comm and comm._sched_combo.accessibleName().strip()))
+    checks.append(bool(comm and comm._changed_only_chk.accessibleDescription().strip()))
+    checks.append(bool(comm and comm._monitor._table.accessibleName().strip()))
+    checks.append(bool(comm and comm._monitor._table.accessibleDescription().strip()))
 
     # Status information must be textual, not color-only.
     checks.append(main_window._sb_comm.text().startswith("Comm:"))

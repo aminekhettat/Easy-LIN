@@ -22,6 +22,7 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QGroupBox, QLabel, QSplitter
 from PySide6.QtCore import Qt
 
 from src.lin_master import ReceivedFrame
@@ -345,6 +346,49 @@ class TestCommunicationPanelConstruction:
     def test_panel_created(self, panel):
         assert panel is not None
         assert panel.focusPolicy() == Qt.FocusPolicy.StrongFocus
+
+    def test_panel_and_explicit_children_have_accessible_metadata(self, panel):
+        assert panel.accessibleName() == "Communication panel"
+        assert "LIN hardware connection" in panel.accessibleDescription()
+        assert panel._monitor.accessibleName() == "Frame monitor panel"
+        assert panel._monitor._table.accessibleName() == "Received LIN frame monitor"
+
+        group_boxes = panel.findChildren(QGroupBox)
+        assert group_boxes
+        assert all(box.accessibleName().strip() for box in group_boxes)
+        assert all(box.accessibleDescription().strip() for box in group_boxes)
+
+        splitters = panel.findChildren(QSplitter)
+        assert splitters
+        assert all(splitter.accessibleName().strip() for splitter in splitters)
+        assert all(splitter.accessibleDescription().strip() for splitter in splitters)
+
+        labels = [
+            label for label in panel.findChildren(QLabel)
+            if label.text() and ("Channel:" in label.text() or "Frame:" in label.text() or "Schedule:" in label.text() or "Data (hex" in label.text() or "Frame Monitor" in label.text())
+        ]
+        assert labels
+        assert all(label.accessibleName().strip() for label in labels)
+        assert all(label.accessibleDescription().strip() for label in labels)
+
+        widgets = [
+            panel._channel_combo,
+            panel._frame_combo,
+            panel._data_edit,
+            panel._master_response_chk,
+            panel._sched_combo,
+            panel._changed_only_chk,
+            panel._refresh_btn,
+            panel._connect_btn,
+            panel._send_btn,
+            panel._sched_start_btn,
+            panel._sched_stop_btn,
+            panel._monitor._log_btn,
+            panel._monitor._export_btn,
+            panel._monitor._clear_btn,
+        ]
+        assert all(widget.accessibleName().strip() for widget in widgets)
+        assert all(widget.accessibleDescription().strip() for widget in widgets)
 
     def test_panel_has_monitor(self, panel):
         assert panel._monitor is not None
