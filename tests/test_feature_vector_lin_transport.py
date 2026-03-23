@@ -230,6 +230,9 @@ def test_stop_handles_shutdown_exception() -> None:
     bus = VectorLINBus()
     bus._bus = BrokenBus()
     bus.stop()
+    assert bus._bus is None
+    assert bus._sim_bus is None
+    assert bus._rx_thread is None
 
 
 def test_rx_loop_dispatches_message_and_handles_callback_error() -> None:
@@ -264,3 +267,54 @@ def test_rx_loop_dispatches_message_and_handles_callback_error() -> None:
     bus._rx_loop()
 
     assert events == [0x25 & 0x3F]
+
+
+def test_simulation_shutdown_prevents_future_echo() -> None:
+    """Ensure simulated echo worker exits once simulation bus is shutdown."""
+    sim = vector_lin._SimBus()  # pylint: disable=protected-access
+    seen = []
+    sim.add_rx_callback(seen.append)
+    sim.shutdown()
+    sim.send(LINFrame(frame_id=1, data=b"\x01"))
+    time.sleep(0.03)
+    assert seen == []
+
+
+def test_start_resets_simulation_state_between_attempts(monkeypatch) -> None:
+    """Ensure fallback simulation state does not leak into subsequent starts."""
+
+    class FakeBus:
+        def recv(self, timeout):
+            return None
+
+        def shutdown(self):
+            pass
+
+    state = {"n": 0}
+
+    def bus_factory(**kwargs):
+        state["n"] += 1
+        if state["n"] == 1:
+            raise RuntimeError("first open fails")
+        return FakeBus()
+
+    fake_can = SimpleNamespace(interface=SimpleNamespace(Bus=bus_factory))
+    monkeypatch.setattr(vector_lin, "_CAN_AVAILABLE", True)
+    monkeypatch.setattr(vector_lin, "can", fake_can)
+
+    bus = VectorLINBus()
+    bus.start()
+    assert bus.is_simulation is True
+    bus.stop()
+
+    bus.start()
+    assert bus.is_simulation is False
+    bus.stop()
+
+
+def test_rx_loop_breaks_if_bus_is_none() -> None:
+    """Ensure RX loop exits safely if bus handle becomes None."""
+    bus = VectorLINBus()
+    bus._running = True
+    bus._bus = None
+    bus._rx_loop()

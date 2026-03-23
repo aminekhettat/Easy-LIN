@@ -86,7 +86,7 @@ class _SimBus:
 
     def __init__(self) -> None:
         """Initialize the in-process simulation bus state."""
-        self._running = False
+        self._running = True
         self._rx_callbacks: list[Callable[[LINFrame], None]] = []
         self._lock = threading.Lock()
         logger.info("LIN simulation bus initialised (no Vector hardware detected).")
@@ -97,6 +97,8 @@ class _SimBus:
         def _echo():
             """Echo the transmitted frame back to registered RX callbacks."""
             time.sleep(0.005)
+            if not self._running:
+                return
             rx = LINFrame(
                 frame_id=frame.frame_id,
                 data=frame.data,
@@ -161,6 +163,7 @@ class VectorLINBus:
         self._rx_callbacks: list[Callable[[LINFrame], None]] = []
         self._tx_callbacks: list[Callable[[LINFrame], None]] = []
         self._lock = threading.Lock()
+        self._lifecycle_lock = threading.Lock()
 
     # ------------------------------------------------------------------
     # Public helpers
@@ -197,28 +200,40 @@ class VectorLINBus:
 
     def start(self) -> None:
         """Open the LIN bus and start the background RX thread."""
-        if self._running:
-            return
-        self._try_open_vector()
-        self._running = True
-        if not self._simulation:
-            self._rx_thread = threading.Thread(
-                target=self._rx_loop, daemon=True, name="LIN-RX"
-            )
-            self._rx_thread.start()
+        with self._lifecycle_lock:
+            if self._running:
+                return
+            self._simulation = False
+            self._bus = None
+            self._sim_bus = None
+            self._try_open_vector()
+            self._running = True
+            if not self._simulation:
+                self._rx_thread = threading.Thread(
+                    target=self._rx_loop, daemon=True, name="LIN-RX"
+                )
+                self._rx_thread.start()
 
     def stop(self) -> None:
         """Stop the RX thread and close the bus."""
-        self._running = False
-        if self._rx_thread:
-            self._rx_thread.join(timeout=2.0)
-        if self._bus:
+        with self._lifecycle_lock:
+            self._running = False
+            rx_thread = self._rx_thread
+            bus = self._bus
+            sim_bus = self._sim_bus
+            self._rx_thread = None
+            self._bus = None
+            self._sim_bus = None
+
+        if rx_thread:
+            rx_thread.join(timeout=2.0)
+        if bus:
             try:
-                self._bus.shutdown()  # type: ignore[union-attr]
+                bus.shutdown()  # type: ignore[union-attr]
             except Exception:
                 pass
-        if self._sim_bus:
-            self._sim_bus.shutdown()
+        if sim_bus:
+            sim_bus.shutdown()
         logger.info("VectorLINBus stopped.")
 
     # ------------------------------------------------------------------
@@ -313,6 +328,8 @@ class VectorLINBus:
         """Background thread: receive frames from python-can and dispatch."""
         while self._running:
             try:
+                if self._bus is None:
+                    break
                 msg = self._bus.recv(timeout=0.1)  # type: ignore[union-attr]
                 if msg is not None:
                     frame = LINFrame(
