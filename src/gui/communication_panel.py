@@ -769,7 +769,9 @@ class CommunicationPanel(QWidget):
         nodes = ldf.nodes if ldf is not None else None
         source_path = ldf.source_path if ldf is not None else ""
         metadata = {
-            "LDF File Name": os.path.basename(source_path) if source_path else "",
+            # Replace backslashes so os.path.basename works correctly on Linux
+            # when source_path originates from a Windows-style path (e.g. C:\temp\net.ldf).
+            "LDF File Name": os.path.basename(source_path.replace("\\", "/")) if source_path else "",
             "LDF File Path": source_path,
             "LDF Channel Name": ldf.channel_name if ldf is not None and ldf.channel_name else "",
             "Protocol Version": ldf.protocol_version if ldf is not None else "",

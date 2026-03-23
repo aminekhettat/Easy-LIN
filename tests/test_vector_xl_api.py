@@ -305,9 +305,10 @@ class TestLoadDll:
 
     def test_find_library_returns_path_64bit(self):
         sentinel = MagicMock(name="loaded_dll")
+        # create=True is required on Linux where ctypes.WinDLL does not exist
         with patch.object(vxl.platform, "system", return_value="Windows"), \
              patch.object(vxl.ctypes.util, "find_library", return_value="C:\\vxlapi64.dll"), \
-             patch.object(vxl.ctypes, "WinDLL", return_value=sentinel) as win_dll:
+             patch.object(vxl.ctypes, "WinDLL", return_value=sentinel, create=True) as win_dll:
             result = VectorXLApi._load_dll()
             assert result is sentinel
             win_dll.assert_called_once()
@@ -325,7 +326,7 @@ class TestLoadDll:
 
         with patch.object(vxl.platform, "system", return_value="Windows"), \
              patch.object(vxl.ctypes.util, "find_library", side_effect=fake_find), \
-             patch.object(vxl.ctypes, "WinDLL", return_value=sentinel):
+             patch.object(vxl.ctypes, "WinDLL", return_value=sentinel, create=True):
             result = VectorXLApi._load_dll()
             assert result is sentinel
 
@@ -346,7 +347,7 @@ class TestLoadDll:
 
         with patch.object(vxl.platform, "system", return_value="Windows"), \
              patch.object(vxl.ctypes.util, "find_library", side_effect=fake_find), \
-             patch.object(vxl.ctypes, "WinDLL", side_effect=fake_windll):
+             patch.object(vxl.ctypes, "WinDLL", side_effect=fake_windll, create=True):
             result = VectorXLApi._load_dll()
             assert result is sentinel
 
@@ -365,7 +366,7 @@ class TestLoadDll:
 
         with patch.object(vxl.platform, "system", return_value="Windows"), \
              patch.object(vxl.ctypes.util, "find_library", side_effect=fake_find), \
-             patch.object(vxl.ctypes, "WinDLL", side_effect=fake_windll):
+             patch.object(vxl.ctypes, "WinDLL", side_effect=fake_windll, create=True):
             result = VectorXLApi._load_dll()
             assert result is sentinel
 
@@ -373,7 +374,7 @@ class TestLoadDll:
         """Neither find_library nor fallback paths work."""
         with patch.object(vxl.platform, "system", return_value="Windows"), \
              patch.object(vxl.ctypes.util, "find_library", return_value=None), \
-             patch.object(vxl.ctypes, "WinDLL", side_effect=OSError("nope")):
+             patch.object(vxl.ctypes, "WinDLL", side_effect=OSError("nope"), create=True):
             with pytest.raises(VectorXLDriverNotFoundError, match="vxlapi.dll not found"):
                 VectorXLApi._load_dll()
 
@@ -396,7 +397,7 @@ class TestLoadDll:
 
         with patch.object(vxl.platform, "system", return_value="Windows"), \
              patch.object(vxl.ctypes.util, "find_library", side_effect=fake_find), \
-             patch.object(vxl.ctypes, "WinDLL", side_effect=fake_windll):
+             patch.object(vxl.ctypes, "WinDLL", side_effect=fake_windll, create=True):
             result = VectorXLApi._load_dll()
             assert result is sentinel
 
