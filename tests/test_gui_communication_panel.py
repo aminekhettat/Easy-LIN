@@ -438,6 +438,9 @@ class TestCommunicationPanelLoadLdf:
         assert panel._sched_start_btn.isEnabled() is True
 
     def test_load_ldf_updates_monitor_metadata(self, panel):
+        # Regression test: Windows-style paths (backslashes) must be normalised
+        # before os.path.basename so that "C:\temp\network.ldf" yields "network.ldf"
+        # on Linux CI runners where backslash is not a path separator.
         ldf = _make_ldf()
         ldf.source_path = r"C:\temp\network.ldf"
         panel.load_ldf(ldf)
@@ -446,6 +449,15 @@ class TestCommunicationPanelLoadLdf:
         assert panel._monitor._session_metadata["Declared Master"] == "M"
         assert panel._monitor._session_metadata["Declared Slaves"] == "S1"
         assert panel._monitor._session_metadata["Frame Publishers"] == "0x10=M"
+
+    def test_load_ldf_updates_monitor_metadata_unix_path(self, panel):
+        # Complement to the Windows-path regression test: verify that Unix-style
+        # paths also yield only the basename in "LDF File Name".
+        ldf = _make_ldf()
+        ldf.source_path = "/home/user/projects/network.ldf"
+        panel.load_ldf(ldf)
+
+        assert panel._monitor._session_metadata["LDF File Name"] == "network.ldf"
 
 
 class TestCommunicationPanelFocus:
