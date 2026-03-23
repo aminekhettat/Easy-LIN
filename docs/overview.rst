@@ -47,6 +47,33 @@ Runtime and Selection Safeguards (0.6.0)
 - Node checkbox selection is locked while communication is connected.
 - Node checkbox selection is unlocked when communication returns to disconnected state.
 
+LIN Runtime Workflows
+---------------------
+
+- **Master-only workflow**
+
+  - Open driver and port with init access.
+  - Configure LIN channel parameters, DLC/checksum policy, and notification.
+  - Activate channel, send master requests, and receive LIN message events.
+
+- **Master + runtime slave workflow**
+
+  - Configure slave responses for selected LIN IDs via runtime API.
+  - Toggle individual slave tasks on/off during measurement.
+  - Keep scheduler/request flow active while updating slave data.
+
+- **Sleep/wakeup workflow**
+
+  - Enter sleep mode with optional wake-up ID policy.
+  - Transmit wake-up pattern and continue normal communication sequence.
+
+Hardware Support Assumptions
+----------------------------
+
+- Supported target is any Windows Vector interface exposing LIN-capable channels via XL Driver Library.
+- Discovery is dynamic from the active driver configuration and not restricted to a single device family.
+- LIN startup requires init access and reports explicit failure if permission is not granted.
+
 Build The HTML Documentation
 ----------------------------
 

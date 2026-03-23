@@ -42,6 +42,19 @@ The GUI is designed for blind and low-vision users:
 - Connect/disconnect, send frames, monitor RX/TX
 - Automatic simulation mode when Vector backend is not available
 
+### LIN Runtime Workflows
+
+- **Master-only**: open one LIN-capable channel with init access, configure DLC/checksum, activate channel, send master headers, receive frame events.
+- **Master + slave task**: configure runtime slave responses (`xlLinSetSlave`) for selected IDs, then enable/disable each slave response during measurement (`xlLinSwitchSlave`).
+- **Sleep / wakeup cycle**: set sleep mode with optional wake-up ID policy, then send wake-up pattern and continue request scheduling.
+
+### Supported Hardware Assumptions
+
+- Easy-LIN supports **LIN-capable Vector channels exposed by XL Driver Library** on Windows.
+- Channel discovery uses the live XL driver configuration and does not hardcode one specific VN family.
+- Operations requiring init access (notably LIN open/startup) fail fast with explicit error reporting.
+- If no usable Vector backend is available, the communication layer can run in simulation mode for UI and functional testing.
+
 ## Official Documentation References
 
 ### Vector

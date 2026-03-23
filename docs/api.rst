@@ -25,6 +25,12 @@ Core Modules
 Communication Modules
 ---------------------
 
+.. automodule:: src.communication.hardware_discovery
+   :members:
+
+.. automodule:: src.communication.lin_controller
+   :members:
+
 .. automodule:: src.communication.vector_lin
    :members:
 
