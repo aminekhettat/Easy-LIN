@@ -106,6 +106,7 @@ from vector_xl_api import (  # noqa: E402
     XL_LIN_SLAVE_OFF,
     XL_LIN_SLAVE_ON,
     XL_LIN_ERRMSG,
+    XL_LIN_TAG_MSG,
     XL_LIN_SYNCERR,
     XL_LIN_SYNC_ERR,
     XL_LIN_NOANS,
@@ -120,6 +121,12 @@ from vector_xl_api import (  # noqa: E402
     XL_LIN_COMESFROM_SLEEPMODE,
     XL_LIN_MSG,
     XL_LIN_STAT_PARAM,
+    LINMessageEvent,
+    LINNoAnswerEvent,
+    LINWakeupEvent,
+    LINSleepEvent,
+    LINCrcInfoEvent,
+    LINRawTagEvent,
     XL_LIN_VERSION_2_0,
     XL_PENDING,
     XL_SUCCESS,
@@ -858,6 +865,100 @@ class TestReceiveAliasesAndQueue:
         api.receive = MagicMock(side_effect=[evt, None])
         api.flush_receive_queue(1)
         assert api.receive.call_count == 2
+
+
+class TestDecodeLinEvent:
+    def _make_evt(self, tag: int, timestamp: int = 1234, chan: int = 2) -> XL_EVENT:
+        evt = XL_EVENT()
+        evt.tag = tag
+        evt.timeStamp = timestamp
+        evt.chanIndex = chan
+        return evt
+
+    def test_decode_lin_msg(self):
+        evt = self._make_evt(XL_LIN_TAG_MSG)
+        evt._raw[0] = 0x12
+        evt._raw[1] = 3
+        evt._raw[2] = 0x34
+        evt._raw[3] = 0x12
+        evt._raw[4] = 1
+        evt._raw[5] = 2
+        evt._raw[6] = 3
+        evt._raw[12] = 0xAB
+
+        decoded = VectorXLApi.decode_lin_event(evt)
+        assert isinstance(decoded, LINMessageEvent)
+        assert decoded.lin_id == 0x12
+        assert decoded.dlc == 3
+        assert decoded.flags == 0x1234
+        assert decoded.data == bytes([1, 2, 3])
+        assert decoded.crc == 0xAB
+
+    def test_decode_lin_no_answer(self):
+        evt = self._make_evt(XL_LIN_NOANS)
+        evt._raw[0] = 0x2A
+        decoded = VectorXLApi.decode_lin_event(evt)
+        assert isinstance(decoded, LINNoAnswerEvent)
+        assert decoded.lin_id == 0x2A
+
+    def test_decode_lin_wakeup(self):
+        evt = self._make_evt(XL_LIN_WAKEUP)
+        evt._raw[0] = 0x01
+        for i, b in enumerate((0x78, 0x56, 0x34, 0x12)):
+            evt._raw[4 + i] = b
+        for i, b in enumerate((0xEF, 0xCD, 0xAB, 0x00)):
+            evt._raw[8 + i] = b
+
+        decoded = VectorXLApi.decode_lin_event(evt)
+        assert isinstance(decoded, LINWakeupEvent)
+        assert decoded.flag == 0x01
+        assert decoded.start_offset == 0x12345678
+        assert decoded.width == 0x00ABCDEF
+
+    def test_decode_lin_sleep(self):
+        evt = self._make_evt(XL_LIN_SLEEP)
+        evt._raw[0] = 0x02
+        decoded = VectorXLApi.decode_lin_event(evt)
+        assert isinstance(decoded, LINSleepEvent)
+        assert decoded.flag == 0x02
+
+    def test_decode_lin_crcinfo(self):
+        evt = self._make_evt(XL_LIN_CRCINFO)
+        evt._raw[0] = 0x22
+        evt._raw[1] = 0x01
+        decoded = VectorXLApi.decode_lin_event(evt)
+        assert isinstance(decoded, LINCrcInfoEvent)
+        assert decoded.lin_id == 0x22
+        assert decoded.flags == 0x01
+
+    def test_decode_lin_err_and_sync_as_raw(self):
+        err_evt = self._make_evt(XL_LIN_ERRMSG)
+        sync_evt = self._make_evt(XL_LIN_SYNCERR)
+        err_decoded = VectorXLApi.decode_lin_event(err_evt)
+        sync_decoded = VectorXLApi.decode_lin_event(sync_evt)
+        assert isinstance(err_decoded, LINRawTagEvent)
+        assert isinstance(sync_decoded, LINRawTagEvent)
+
+    def test_decode_non_lin_event_returns_none(self):
+        evt = self._make_evt(0x7F)
+        assert VectorXLApi.decode_lin_event(evt) is None
+
+
+class TestReceiveLinEvent:
+    def test_receive_lin_event_empty_queue(self):
+        api, _ = _make_api()
+        api.receive = MagicMock(return_value=None)
+        assert api.receive_lin_event(1) is None
+
+    def test_receive_lin_event_decodes(self):
+        api, _ = _make_api()
+        evt = XL_EVENT()
+        evt.tag = XL_LIN_NOANS
+        evt._raw[0] = 0x19
+        api.receive = MagicMock(return_value=evt)
+        decoded = api.receive_lin_event(1)
+        assert isinstance(decoded, LINNoAnswerEvent)
+        assert decoded.lin_id == 0x19
 
 
 class TestNotification:

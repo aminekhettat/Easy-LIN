@@ -20,6 +20,7 @@ import ctypes.util
 import ctypes.wintypes
 import logging
 import platform
+from dataclasses import dataclass
 from pathlib import Path
 from ctypes import c_int, c_uint, c_ubyte, c_char, c_char_p, c_ulonglong, POINTER
 from typing import List, Optional, Tuple
@@ -68,6 +69,7 @@ XL_LIN_FLAG_NO_SLEEP_MODE_EVENT = 0x01
 XL_LIN_FLAG_USE_ID_AS_WAKEUPID = 0x02
 
 # LIN event tags
+XL_LIN_TAG_MSG = 20
 XL_LIN_ERRMSG = 21
 XL_LIN_SYNCERR = 22
 XL_LIN_SYNC_ERR = XL_LIN_SYNCERR  # compatibility alias
@@ -203,6 +205,72 @@ class XL_EVENT(ctypes.Structure):
     def lin_msg(self) -> XL_LIN_MSG:
         """Overlay the payload bytes as an XL_LIN_MSG."""
         return XL_LIN_MSG.from_buffer_copy(self._raw)
+
+
+@dataclass(frozen=True)
+class LINEventBase:
+    """Common metadata for decoded LIN events."""
+
+    tag: int
+    timestamp_ns: int
+    channel_index: int
+
+
+@dataclass(frozen=True)
+class LINMessageEvent(LINEventBase):
+    """Decoded XL_LIN_MSG payload."""
+
+    lin_id: int
+    dlc: int
+    flags: int
+    data: bytes
+    crc: int
+
+
+@dataclass(frozen=True)
+class LINNoAnswerEvent(LINEventBase):
+    """Decoded XL_LIN_NOANS payload."""
+
+    lin_id: int
+
+
+@dataclass(frozen=True)
+class LINWakeupEvent(LINEventBase):
+    """Decoded XL_LIN_WAKEUP payload."""
+
+    flag: int
+    start_offset: int
+    width: int
+
+
+@dataclass(frozen=True)
+class LINSleepEvent(LINEventBase):
+    """Decoded XL_LIN_SLEEP payload."""
+
+    flag: int
+
+
+@dataclass(frozen=True)
+class LINCrcInfoEvent(LINEventBase):
+    """Decoded XL_LIN_CRCINFO payload."""
+
+    lin_id: int
+    flags: int
+
+
+@dataclass(frozen=True)
+class LINRawTagEvent(LINEventBase):
+    """Decoded LIN tag without additional payload fields."""
+
+
+LINDecodedEvent = (
+    LINMessageEvent
+    | LINNoAnswerEvent
+    | LINWakeupEvent
+    | LINSleepEvent
+    | LINCrcInfoEvent
+    | LINRawTagEvent
+)
 
 
 # ---------------------------------------------------------------------------
@@ -777,6 +845,64 @@ class VectorXLApi:  # pylint: disable=too-many-public-methods
     def receive_event(self, port_handle: int) -> Optional[XL_EVENT]:
         """Compatibility alias for :meth:`receive`."""
         return self.receive(port_handle)
+
+    @staticmethod
+    def decode_lin_event(evt: XL_EVENT) -> Optional[LINDecodedEvent]:
+        """Decode one raw XL event into a typed LIN event model.
+
+        Returns ``None`` when the event tag does not represent a LIN event.
+        """
+        raw = bytes(evt._raw)
+        base = {
+            "tag": int(evt.tag),
+            "timestamp_ns": int(evt.timeStamp),
+            "channel_index": int(evt.chanIndex),
+        }
+
+        if evt.tag == XL_LIN_TAG_MSG:
+            flags = int.from_bytes(raw[2:4], byteorder="little", signed=False)
+            dlc = int(raw[1])
+            return LINMessageEvent(
+                **base,
+                lin_id=int(raw[0]),
+                dlc=dlc,
+                flags=flags,
+                data=raw[4 : 4 + min(8, dlc)],
+                crc=int(raw[12]),
+            )
+
+        if evt.tag == XL_LIN_NOANS:
+            return LINNoAnswerEvent(**base, lin_id=int(raw[0]))
+
+        if evt.tag == XL_LIN_WAKEUP:
+            return LINWakeupEvent(
+                **base,
+                flag=int(raw[0]),
+                start_offset=int.from_bytes(raw[4:8], byteorder="little", signed=False),
+                width=int.from_bytes(raw[8:12], byteorder="little", signed=False),
+            )
+
+        if evt.tag == XL_LIN_SLEEP:
+            return LINSleepEvent(**base, flag=int(raw[0]))
+
+        if evt.tag == XL_LIN_CRCINFO:
+            return LINCrcInfoEvent(**base, lin_id=int(raw[0]), flags=int(raw[1]))
+
+        if evt.tag in (XL_LIN_ERRMSG, XL_LIN_SYNCERR, XL_LIN_SYNC_ERR):
+            return LINRawTagEvent(**base)
+
+        return None
+
+    def receive_lin_event(self, port_handle: int) -> Optional[LINDecodedEvent]:
+        """Receive and decode one LIN event from the queue.
+
+        Returns ``None`` when the queue is empty or when the dequeued event is
+        not one of the LIN tags handled by :meth:`decode_lin_event`.
+        """
+        evt = self.receive(port_handle)
+        if evt is None:
+            return None
+        return self.decode_lin_event(evt)
 
     def flush_receive_queue(self, port_handle: int) -> None:
         """Drain all pending receive events for one XL port.
