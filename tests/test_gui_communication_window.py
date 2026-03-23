@@ -55,6 +55,23 @@ def _make_ldf():
     return ldf
 
 
+def _make_other_ldf():
+    ldf = LDFFile(
+        protocol_version="2.1",
+        language_version="2.1",
+        speed=19.2,
+        nodes=LDFNodes(
+            master=LDFMaster(name="M2", time_base=5.0, jitter=0.1),
+            slaves=["S2"],
+        ),
+        frames=[
+            LDFFrame(name="Frame2", frame_id=0x11, publisher="M2", frame_size=2),
+        ],
+    )
+    ldf.build_lookups()
+    return ldf
+
+
 @pytest.fixture
 def comm_window(qapp):
     with patch("src.gui.communication_panel.LINMaster") as MockMaster:
@@ -131,6 +148,16 @@ class TestCommunicationWindowLoadLdf:
 
         comm_window._comm_panel.load_ldf.assert_called_once_with(second_ldf)
         comm_window._comm_panel.configure_selection.assert_called_once_with("M", ["S1", "S2"])
+
+    def test_queue_selection_rejects_nodes_from_other_ldf(self, comm_window, qapp):
+        comm_window.queue_ldf(_make_other_ldf())
+        comm_window.queue_selection("M", ["S1"])
+
+        qapp.processEvents()
+
+        assert comm_window._comm_panel._selection is None
+        assert comm_window._comm_panel._monitor._session_metadata.get("Selected Master", "") == ""
+        assert comm_window._comm_panel._monitor._session_metadata.get("Selected Slaves", "") == ""
 
 
 class TestCommunicationWindowFocus:

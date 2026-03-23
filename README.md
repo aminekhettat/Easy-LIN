@@ -43,6 +43,7 @@ The GUI is designed for blind and low-vision users:
 - Start and stop live CSV logging while the communication window remains open
 - Logged CSV files start with session metadata (LDF file, master/slave names, protocol details)
 - Logged frames include timestamp, transfer direction, frame identity, status, checksum, and hex payload
+- Communication selection only accepts the active LDF master and its declared slaves, preventing stale cross-network selections from reaching the runtime panel
 - Automatic simulation mode when Vector backend is not available
 
 ### LIN Runtime Workflows

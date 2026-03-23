@@ -45,24 +45,33 @@ def qapp():
     return app
 
 
-def _make_ldf():
+def _make_ldf(master_name="M", slaves=None):
     """Return a minimal LDFFile with frames and schedules."""
+    if slaves is None:
+        slaves = ["S1"]
+
     ldf = LDFFile(
         protocol_version="2.1",
         language_version="2.1",
         speed=19.2,
         nodes=LDFNodes(
-            master=LDFMaster(name="M", time_base=5.0, jitter=0.1),
-            slaves=["S1"],
+            master=LDFMaster(name=master_name, time_base=5.0, jitter=0.1),
+            slaves=list(slaves),
         ),
         signals=[
-            LDFSignal(name="Sig1", size=8, init_value=0, publisher="M", subscribers=["S1"]),
+            LDFSignal(
+                name="Sig1",
+                size=8,
+                init_value=0,
+                publisher=master_name,
+                subscribers=list(slaves[:1]) or ["S1"],
+            ),
         ],
         frames=[
             LDFFrame(
                 name="Frame1",
                 frame_id=0x10,
-                publisher="M",
+                publisher=master_name,
                 frame_size=2,
                 signals=[LDFFrameSignal(signal_name="Sig1", bit_offset=0)],
             ),
@@ -813,12 +822,38 @@ class TestCommunicationPanelCallbacks:
         assert any("filter disabled" in m.lower() for m in messages)
 
     def test_configure_selection_sets_gate(self, panel):
+        panel.load_ldf(_make_ldf(slaves=["S1", "S2"]))
         panel.configure_selection("M", ["S1", "S2"])
         assert panel._selection is not None
         assert panel._selection.master == "M"
         assert list(panel._selection.slaves) == ["S1", "S2"]
         assert panel._monitor._session_metadata["Selected Master"] == "M"
         assert panel._monitor._session_metadata["Selected Slaves"] == "S1; S2"
+
+    def test_configure_selection_rejects_selection_without_ldf(self, panel):
+        panel.configure_selection("M", ["S1"])
+
+        assert panel._selection is None
+        assert panel._monitor._session_metadata.get("Selected Master", "") == ""
+        assert panel._monitor._session_metadata.get("Selected Slaves", "") == ""
+
+    def test_configure_selection_rejects_invalid_master(self, panel):
+        panel.load_ldf(_make_ldf(master_name="DeclaredMaster", slaves=["S1", "S2"]))
+
+        panel.configure_selection("OtherMaster", ["S1"])
+
+        assert panel._selection is None
+        assert panel._monitor._session_metadata.get("Selected Master", "") == ""
+        assert panel._monitor._session_metadata.get("Selected Slaves", "") == ""
+
+    def test_configure_selection_rejects_invalid_slave(self, panel):
+        panel.load_ldf(_make_ldf(slaves=["S1", "S2"]))
+
+        panel.configure_selection("M", ["S1", "OtherSlave"])
+
+        assert panel._selection is None
+        assert panel._monitor._session_metadata.get("Selected Master", "") == ""
+        assert panel._monitor._session_metadata.get("Selected Slaves", "") == ""
 
     def test_connect_with_ldf_without_selection_is_blocked(self, panel, qapp):
         panel._ldf = MagicMock()

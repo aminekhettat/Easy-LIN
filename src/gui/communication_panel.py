@@ -634,7 +634,25 @@ class CommunicationPanel(QWidget):
 
     def configure_selection(self, master: str, slaves: list[str]) -> None:
         """Store selected master and slave nodes used to gate communication start."""
-        self._selection = CommunicationSelection(master=master, slaves=tuple(slaves))
+        nodes = self._ldf.nodes if self._ldf is not None else None
+        normalized_slaves = tuple(slaves)
+
+        if (
+            nodes is None
+            or master != nodes.master.name
+            or not normalized_slaves
+            or any(slave not in nodes.slaves for slave in normalized_slaves)
+        ):
+            log.warning(
+                "Ignoring communication selection outside active LDF context: master=%r slaves=%r",
+                master,
+                slaves,
+            )
+            self._selection = None
+            self._sync_monitor_metadata()
+            return
+
+        self._selection = CommunicationSelection(master=master, slaves=normalized_slaves)
         self._sync_monitor_metadata()
 
     def _sync_monitor_metadata(self) -> None:

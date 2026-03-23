@@ -78,6 +78,7 @@ LIN Runtime Workflows
 
   - LDF loads and node-selection changes are queued and coalesced before they reach the communication window.
   - This avoids blocking the parsing/viewer workflow while still keeping the communication state aligned with the latest LDF and node-selection context.
+  - The communication panel accepts only the active LDF master and its declared slaves, so stale selections from another network are discarded before they can gate runtime actions.
 
 Hardware Support Assumptions
 ----------------------------
