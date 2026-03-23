@@ -182,7 +182,7 @@ class MainWindow(QMainWindow):
     def _on_node_selection_changed(self, master: str, slaves: list[str]) -> None:
         """Update communication selection when node checkboxes change in the LDF tree."""
         self._comm_selection = (master, slaves)
-        self._comm_window.configure_selection(master, slaves)
+        self._comm_window.queue_selection(master, slaves)
         self._announce_event(
             f"Node selection: master {master!r}, {len(slaves)} slave(s)",
             timeout_ms=3000,
@@ -342,7 +342,7 @@ class MainWindow(QMainWindow):
             viewer.node_selection_changed.connect(self._on_node_selection_changed)
 
         # Update communication window and reset communication selection.
-        self._comm_window.load_ldf(ldf)
+        self._comm_window.queue_ldf(ldf)
         self._comm_selection = None
         # Initialize comm selection from tree node checkboxes.
         _cur_viewer = self.centralWidget()
@@ -350,7 +350,7 @@ class MainWindow(QMainWindow):
             _master, _slaves = _cur_viewer.selected_nodes()
             if _master and _slaves:
                 self._comm_selection = (_master, _slaves)
-                self._comm_window.configure_selection(_master, _slaves)
+                self._comm_window.queue_selection(_master, _slaves)
 
         # Save to recent files
         self._add_recent(path)
@@ -700,7 +700,7 @@ class MainWindow(QMainWindow):
             return False
 
         master, slaves = selection
-        self._comm_window.configure_selection(master, slaves)
+        self._comm_window.queue_selection(master, slaves)
         self._comm_selection = (master, slaves)
         self._announce_event(
             f"Communication selection: master {master}, slaves {len(slaves)}",

@@ -497,9 +497,9 @@ class TestCommunicationSelectionFlow:
         main_window._ldf = _make_ldf()
         main_window._comm_selection = None
         main_window._prompt_comm_selection = MagicMock(return_value=("M", ["S1", "S2"]))
-        main_window._comm_window.configure_selection = MagicMock()
+        main_window._comm_window.queue_selection = MagicMock()
         assert main_window._ensure_comm_selection() is True
-        main_window._comm_window.configure_selection.assert_called_once_with("M", ["S1", "S2"])
+        main_window._comm_window.queue_selection.assert_called_once_with("M", ["S1", "S2"])
 
 
 # ---------------------------------------------------------------------------
@@ -725,10 +725,10 @@ class TestAnnounceEvent:
 
     class TestNodeSelectionChangedWiring:
         def test_on_node_selection_changed_updates_comm_selection(self, main_window):
-            main_window._comm_window.configure_selection = MagicMock()
+            main_window._comm_window.queue_selection = MagicMock()
             main_window._on_node_selection_changed("M", ["S1", "S2"])
             assert main_window._comm_selection == ("M", ["S1", "S2"])
-            main_window._comm_window.configure_selection.assert_called_once_with("M", ["S1", "S2"])
+            main_window._comm_window.queue_selection.assert_called_once_with("M", ["S1", "S2"])
 
         def test_set_comm_status_connected_locks_viewer(self, main_window, monkeypatch):
             from src.gui.ldf_viewer import LDFViewer
@@ -756,3 +756,15 @@ class TestAnnounceEvent:
             main_window._load_ldf("/good_nodes.ldf")
             # Tree checkboxes should auto-select "M" (master) and "S1" (slave)
             assert main_window._comm_selection == ("M", ["S1"])
+
+        def test_load_ldf_queues_comm_window_sync(self, main_window, monkeypatch):
+            ldf = _make_ldf()
+            monkeypatch.setattr("src.gui.main_window_qt.parse_ldf", MagicMock(return_value=ldf))
+            monkeypatch.setattr("src.gui.main_window_qt.validate_ldf", MagicMock(return_value=[]))
+            main_window._comm_window.queue_ldf = MagicMock()
+            main_window._comm_window.queue_selection = MagicMock()
+
+            main_window._load_ldf("/good_nodes.ldf")
+
+            main_window._comm_window.queue_ldf.assert_called_once_with(ldf)
+            main_window._comm_window.queue_selection.assert_called_once_with("M", ["S1"])

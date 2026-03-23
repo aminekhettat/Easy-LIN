@@ -71,8 +71,13 @@ LIN Runtime Workflows
 
   - Start logging directly from the communication window without stopping acquisition.
   - Write a metadata section first so the CSV captures LDF file context and selected master/slave names.
-  - Append each received frame to a CSV row with wall-clock timestamp, frame ID, DLC, status, checksum, and dedicated byte columns.
+  - Append each received frame to a CSV row with wall-clock timestamp, transfer direction, frame ID, DLC, status, checksum, and hex payload.
   - Stop logging at any time; active logging is also closed when the communication window is hidden.
+
+- **Asynchronous viewer/communication synchronization**
+
+  - LDF loads and node-selection changes are queued and coalesced before they reach the communication window.
+  - This avoids blocking the parsing/viewer workflow while still keeping the communication state aligned with the latest LDF and node-selection context.
 
 Hardware Support Assumptions
 ----------------------------

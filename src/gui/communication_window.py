@@ -13,7 +13,7 @@ LDF analysis and hardware communication are managed independently.
         in LICENSE.
 """
 
-from PySide6.QtCore import Signal, QSettings
+from PySide6.QtCore import Signal, QSettings, QTimer
 from PySide6.QtWidgets import QMainWindow
 
 from src.gui.communication_panel import CommunicationPanel
@@ -42,6 +42,11 @@ class CommunicationWindow(QMainWindow):
         self.setCentralWidget(self._comm_panel)
 
         self._settings = QSettings("Easy-LIN", "Easy-LIN")
+        self._pending_ldf: LDFFile | None = None
+        self._pending_selection: tuple[str, list[str]] | None = None
+        self._sync_timer = QTimer(self)
+        self._sync_timer.setSingleShot(True)
+        self._sync_timer.timeout.connect(self._flush_pending_updates)
         self._restore_geometry()
 
     def load_ldf(self, ldf: LDFFile) -> None:
@@ -51,6 +56,31 @@ class CommunicationWindow(QMainWindow):
     def configure_selection(self, master: str, slaves: list[str]) -> None:
         """Forward selected communication nodes to the communication panel."""
         self._comm_panel.configure_selection(master, slaves)
+
+    def queue_ldf(self, ldf: LDFFile) -> None:
+        """Queue an LDF update for deferred delivery to the communication panel."""
+        self._pending_ldf = ldf
+        self._schedule_sync()
+
+    def queue_selection(self, master: str, slaves: list[str]) -> None:
+        """Queue a selection update for deferred delivery to the communication panel."""
+        self._pending_selection = (master, list(slaves))
+        self._schedule_sync()
+
+    def _schedule_sync(self) -> None:
+        """Coalesce cross-window updates onto the next GUI event-loop tick."""
+        if not self._sync_timer.isActive():
+            self._sync_timer.start(0)
+
+    def _flush_pending_updates(self) -> None:
+        """Apply any queued LDF and node-selection updates in a stable order."""
+        if self._pending_ldf is not None:
+            self._comm_panel.load_ldf(self._pending_ldf)
+            self._pending_ldf = None
+        if self._pending_selection is not None:
+            master, slaves = self._pending_selection
+            self._comm_panel.configure_selection(master, slaves)
+            self._pending_selection = None
 
     def focus_primary_control(self) -> None:
         """Delegate focus to the communication panel's first control."""

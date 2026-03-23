@@ -42,7 +42,7 @@ The GUI is designed for blind and low-vision users:
 - Connect/disconnect, send frames, monitor RX/TX
 - Start and stop live CSV logging while the communication window remains open
 - Logged CSV files start with session metadata (LDF file, master/slave names, protocol details)
-- Logged frames include timestamp, frame identity, status, checksum, per-byte columns, and hex payload
+- Logged frames include timestamp, transfer direction, frame identity, status, checksum, and hex payload
 - Automatic simulation mode when Vector backend is not available
 
 ### LIN Runtime Workflows
@@ -50,6 +50,7 @@ The GUI is designed for blind and low-vision users:
 - **Master-only**: open one LIN-capable channel with init access, configure DLC/checksum, activate channel, send master headers, receive frame events.
 - **Master + slave task**: configure runtime slave responses (`xlLinSetSlave`) for selected IDs, then enable/disable each slave response during measurement (`xlLinSwitchSlave`).
 - **Sleep / wakeup cycle**: set sleep mode with optional wake-up ID policy, then send wake-up pattern and continue request scheduling.
+- **Viewer-to-communication sync**: LDF and node-selection changes are queued onto the Qt event loop before being applied to the communication window, so viewer operations stay responsive while communication state remains synchronized.
 
 ### Supported Hardware Assumptions
 

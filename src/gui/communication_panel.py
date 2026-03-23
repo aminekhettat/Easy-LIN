@@ -17,7 +17,6 @@ import csv
 import io
 import logging
 import os
-from datetime import datetime
 from dataclasses import dataclass
 from typing import Optional, Protocol
 
@@ -170,19 +169,11 @@ class _FrameMonitor(QWidget):
     MAX_ROWS = 500
     CSV_COLUMNS = [
         "Timestamp (ms)",
-        "Timestamp (ISO)",
+        "Direction",
         "Frame ID",
         "DLC",
         "Status",
         "Checksum",
-        "Data 0",
-        "Data 1",
-        "Data 2",
-        "Data 3",
-        "Data 4",
-        "Data 5",
-        "Data 6",
-        "Data 7",
         "Data (hex)",
     ]
 
@@ -284,22 +275,49 @@ class _FrameMonitor(QWidget):
     def _frame_to_record(self, frame: ReceivedFrame) -> dict[str, object]:
         """Return normalized values for table display and CSV logging."""
         timestamp_ms = f"{frame.timestamp_ns / 1_000_000:.3f}"
-        timestamp_iso = datetime.fromtimestamp(frame.timestamp_ns / 1_000_000_000).isoformat(
-            timespec="milliseconds"
-        )
         data_hex = " ".join(f"{byte:02X}" for byte in frame.data)
-        data_columns = [f"0x{byte:02X}" for byte in frame.data[:8]]
-        data_columns.extend([""] * (8 - len(data_columns)))
+        direction = self._resolve_frame_direction(frame.frame_id)
         return {
             "timestamp_ms": timestamp_ms,
-            "timestamp_iso": timestamp_iso,
+            "direction": direction,
             "frame_id": f"0x{frame.frame_id:02X}",
             "dlc": str(len(frame.data)),
             "status": "CRC ERR" if frame.crc_error else "OK",
             "checksum": f"0x{frame.checksum:02X}" if frame.checksum is not None else "",
-            "data_columns": data_columns,
             "data_hex": data_hex,
         }
+
+    def _resolve_frame_direction(self, frame_id: int) -> str:
+        """Describe whether the frame is expected from master or slave publisher."""
+        selected_master = self._session_metadata.get("Selected Master", "")
+        selected_slaves = {
+            item.strip()
+            for item in self._session_metadata.get("Selected Slaves", "").split(";")
+            if item.strip()
+        }
+        declared_master = self._session_metadata.get("Declared Master", "")
+        declared_slaves = {
+            item.strip()
+            for item in self._session_metadata.get("Declared Slaves", "").split(";")
+            if item.strip()
+        }
+        frame_publishers = self._session_metadata.get("Frame Publishers", "")
+        publisher = ""
+        for mapping in frame_publishers.split("|"):
+            if not mapping:
+                continue
+            frame_key, _, frame_publisher = mapping.partition("=")
+            if frame_key == f"0x{frame_id:02X}":
+                publisher = frame_publisher
+                break
+
+        master_name = selected_master or declared_master
+        slave_names = selected_slaves or declared_slaves
+        if publisher and master_name and publisher == master_name:
+            return "Master -> Slave"
+        if publisher and publisher in slave_names:
+            return "Slave -> Master"
+        return "Unknown"
 
     def _write_csv_preamble(self, writer: csv.writer) -> None:
         """Write metadata and header rows for a CSV log document."""
@@ -318,12 +336,11 @@ class _FrameMonitor(QWidget):
         self._logging_writer.writerow(
             [
                 record["timestamp_ms"],
-                record["timestamp_iso"],
+                record["direction"],
                 record["frame_id"],
                 record["dlc"],
                 record["status"],
                 record["checksum"],
-                *record["data_columns"],
                 record["data_hex"],
             ]
         )
@@ -368,12 +385,11 @@ class _FrameMonitor(QWidget):
             writer.writerow(
                 [
                     record["timestamp_ms"],
-                    record["timestamp_iso"],
+                    record["direction"],
                     record["frame_id"],
                     record["dlc"],
                     record["status"],
                     record["checksum"],
-                    *record["data_columns"],
                     record["data_hex"],
                 ]
             )
@@ -638,6 +654,9 @@ class CommunicationPanel(QWidget):
             "Declared Slaves": "; ".join(nodes.slaves) if nodes is not None else "",
             "Selected Master": selection.master if selection is not None else "",
             "Selected Slaves": "; ".join(selection.slaves) if selection is not None else "",
+            "Frame Publishers": "|".join(
+                f"0x{frame.frame_id:02X}={frame.publisher}" for frame in (ldf.frames if ldf is not None else [])
+            ),
         }
         self._monitor.set_session_metadata(metadata)
 

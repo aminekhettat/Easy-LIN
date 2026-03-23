@@ -163,6 +163,7 @@ class TestFrameMonitor:
         from src.gui.communication_panel import _FrameMonitor
 
         monitor = _FrameMonitor()
+        monitor.set_session_metadata({"Frame Publishers": "0x10=M", "Selected Master": "M"})
         monitor.add_frame(ReceivedFrame(0x10, b"\x01\x02", 5_000_000))
         out_path = str(tmp_path / "export.csv")
         with patch("src.gui.communication_panel.QFileDialog") as MockDlg:
@@ -170,8 +171,9 @@ class TestFrameMonitor:
             monitor._export_csv()
         with open(out_path, newline="", encoding="utf-8") as fh:
             rows = list(csv.reader(fh))
-        assert rows[0][0] == "Timestamp (ms)"
-        assert rows[1][2] == "0x10"
+        header_index = rows.index(monitor.CSV_COLUMNS)
+        assert rows[header_index][0] == "Timestamp (ms)"
+        assert rows[header_index + 1][2] == "0x10"
 
     def test_export_csv_empty_table(self, qapp, tmp_path):
         """An empty monitor still produces a valid CSV with only the header."""
@@ -209,6 +211,7 @@ class TestFrameMonitor:
                 "LDF File Name": "network.ldf",
                 "Selected Master": "M",
                 "Selected Slaves": "S1; S2",
+                "Frame Publishers": "0x10=M",
             }
         )
         out_path = str(tmp_path / "live.csv")
@@ -231,12 +234,12 @@ class TestFrameMonitor:
         assert ["Selected Slaves", "S1; S2"] in rows
         header_index = rows.index(monitor.CSV_COLUMNS)
         assert rows[header_index + 1][0] == "5.000"
+        assert rows[header_index + 1][1] == "Master -> Slave"
         assert rows[header_index + 1][2] == "0x10"
         assert rows[header_index + 1][3] == "2"
         assert rows[header_index + 1][4] == "OK"
         assert rows[header_index + 1][5] == "0x5A"
-        assert rows[header_index + 1][6:14] == ["0x01", "0x02", "", "", "", "", "", ""]
-        assert rows[header_index + 1][14] == "01 02"
+        assert rows[header_index + 1][6] == "01 02"
         assert monitor.is_logging is False
 
     def test_toggle_csv_logging_stops_active_session(self, qapp, tmp_path):
@@ -284,6 +287,29 @@ class TestFrameMonitor:
         assert ["LDF File Name", "session.ldf"] in rows
         header_index = rows.index(monitor.CSV_COLUMNS)
         assert rows[header_index + 1][5] == "0x99"
+
+    def test_frame_direction_uses_slave_publisher_metadata(self, qapp):
+        from src.gui.communication_panel import _FrameMonitor
+
+        monitor = _FrameMonitor()
+        monitor.set_session_metadata(
+            {
+                "Selected Master": "M",
+                "Selected Slaves": "S1",
+                "Frame Publishers": "0x22=S1",
+            }
+        )
+
+        record = monitor._frame_to_record(ReceivedFrame(0x22, b"\x10", 1_000_000, checksum=0x77))
+
+        assert record["direction"] == "Slave -> Master"
+
+    def test_frame_direction_unknown_without_matching_metadata(self, qapp):
+        from src.gui.communication_panel import _FrameMonitor
+
+        monitor = _FrameMonitor()
+        record = monitor._frame_to_record(ReceivedFrame(0x33, b"\x10", 1_000_000))
+        assert record["direction"] == "Unknown"
 
 
 # ---------------------------------------------------------------------------
@@ -366,6 +392,7 @@ class TestCommunicationPanelLoadLdf:
         assert panel._monitor._session_metadata["LDF File Name"] == "network.ldf"
         assert panel._monitor._session_metadata["Declared Master"] == "M"
         assert panel._monitor._session_metadata["Declared Slaves"] == "S1"
+        assert panel._monitor._session_metadata["Frame Publishers"] == "0x10=M"
 
 
 class TestCommunicationPanelFocus:

@@ -96,6 +96,42 @@ class TestCommunicationWindowLoadLdf:
         comm_window.configure_selection("M", ["S1"])
         comm_window._comm_panel.configure_selection.assert_called_once_with("M", ["S1"])
 
+    def test_queue_ldf_defers_until_event_loop(self, comm_window, qapp):
+        ldf = _make_ldf()
+        comm_window._comm_panel.load_ldf = MagicMock()
+
+        comm_window.queue_ldf(ldf)
+        comm_window._comm_panel.load_ldf.assert_not_called()
+
+        qapp.processEvents()
+        comm_window._comm_panel.load_ldf.assert_called_once_with(ldf)
+
+    def test_queue_selection_defers_until_event_loop(self, comm_window, qapp):
+        comm_window._comm_panel.configure_selection = MagicMock()
+
+        comm_window.queue_selection("M", ["S1"])
+        comm_window._comm_panel.configure_selection.assert_not_called()
+
+        qapp.processEvents()
+        comm_window._comm_panel.configure_selection.assert_called_once_with("M", ["S1"])
+
+    def test_queue_updates_are_coalesced(self, comm_window, qapp):
+        first_ldf = _make_ldf()
+        second_ldf = _make_ldf()
+        second_ldf.source_path = "second.ldf"
+        comm_window._comm_panel.load_ldf = MagicMock()
+        comm_window._comm_panel.configure_selection = MagicMock()
+
+        comm_window.queue_ldf(first_ldf)
+        comm_window.queue_ldf(second_ldf)
+        comm_window.queue_selection("M", ["S1"])
+        comm_window.queue_selection("M", ["S1", "S2"])
+
+        qapp.processEvents()
+
+        comm_window._comm_panel.load_ldf.assert_called_once_with(second_ldf)
+        comm_window._comm_panel.configure_selection.assert_called_once_with("M", ["S1", "S2"])
+
 
 class TestCommunicationWindowFocus:
     def test_focus_primary_control(self, comm_window):
