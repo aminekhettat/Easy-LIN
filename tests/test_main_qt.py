@@ -12,32 +12,16 @@ Covers:
 from __future__ import annotations
 
 import sys
-from unittest.mock import patch
 
 import pytest
 
 
-@pytest.fixture(autouse=True)
-def _offscreen(monkeypatch):
-    """Force offscreen Qt and stable lock behavior for launcher tests."""
-    import os
+from src.main_qt import run_qt_app
 
-    from PySide6 import QtCore, QtWidgets
 
-    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-
-    class _AlwaysAcquiredLock:
-        """Default lock stub: always acquire to avoid cross-test lock leakage."""
-
-        def __init__(self, _path: str):
-            self._locked = True
-
-        def tryLock(self, _timeout: int) -> bool:
-            return self._locked
-
-    monkeypatch.setattr(QtCore, "QLockFile", _AlwaysAcquiredLock)
-    monkeypatch.setattr(QtWidgets.QMessageBox, "warning", lambda *args, **kwargs: None)
-
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 class _FakeApp:
     """Minimal stand-in for QApplication."""
@@ -47,6 +31,7 @@ class _FakeApp:
         self._name = None
         self._org = None
         self._style = None
+        self._exec_return = 0
 
     def setApplicationName(self, name):
         self._name = name
@@ -58,7 +43,7 @@ class _FakeApp:
         self._style = style
 
     def exec(self):
-        return 0
+        return self._exec_return
 
 
 class _FakeWindow:
@@ -75,204 +60,162 @@ class _FakeWindow:
         self.loaded_path = path
 
 
-def _make_patches(fake_app_cls=None, fake_window_cls=None):
-    """Return patches for QApplication and MainWindow."""
-    if fake_app_cls is None:
-        fake_app_cls = _FakeApp
-    if fake_window_cls is None:
-        fake_window_cls = _FakeWindow
-    return (
-        patch("src.main_qt.QApplication", fake_app_cls, create=True),
-        patch("src.main_qt.MainWindow", fake_window_cls, create=True),
+class _FakeLock:
+    """Stand-in for QLockFile."""
+
+    def __init__(self, acquired: bool = True):
+        self._acquired = acquired
+
+    def tryLock(self, _timeout: int) -> bool:
+        return self._acquired
+
+
+def _make_seams(argv=None, *, acquired=True, exec_return=0):
+    """Return (fake_app, fake_window, lock, kwargs dict) ready for run_qt_app."""
+    _argv = argv or ["test"]
+    fake_app = _FakeApp(_argv)
+    fake_app._exec_return = exec_return
+    fake_window = _FakeWindow()
+    lock = _FakeLock(acquired=acquired)
+    kwargs = dict(
+        _app_factory=lambda a: fake_app,
+        _lock_factory=lambda _p: lock,
+        _window_factory=lambda: fake_window,
     )
+    return fake_app, fake_window, lock, kwargs
+
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
 
 
 def test_run_qt_app_defaults_to_sys_argv(monkeypatch):
     """When argv is None, sys.argv should be used."""
     monkeypatch.setattr(sys, "argv", ["easy-lin"])
-    fake_app = _FakeApp(["easy-lin"])
-    fake_window = _FakeWindow()
+    fake_app, fake_window, _lock, kwargs = _make_seams(["easy-lin"])
 
-    with (
-        patch("PySide6.QtWidgets.QApplication", return_value=fake_app),
-        patch("src.gui.main_window_qt.MainWindow", return_value=fake_window),
-    ):
-        from src.main_qt import run_qt_app
-        with pytest.raises(SystemExit) as exc_info:
-            run_qt_app(None)
-        assert exc_info.value.code == 0
+    with pytest.raises(SystemExit) as exc_info:
+        run_qt_app(None, **kwargs)
+    assert exc_info.value.code == 0
 
 
 def test_run_qt_app_with_explicit_argv():
     """When argv is provided, it should be passed to QApplication."""
+    received = []
     fake_app = _FakeApp(["test"])
     fake_window = _FakeWindow()
+    lock = _FakeLock()
 
-    with (
-        patch("PySide6.QtWidgets.QApplication", return_value=fake_app) as mock_qapp,
-        patch("src.gui.main_window_qt.MainWindow", return_value=fake_window),
-    ):
-        from src.main_qt import run_qt_app
-        with pytest.raises(SystemExit) as exc_info:
-            run_qt_app(["test"])
-        assert exc_info.value.code == 0
-        mock_qapp.assert_called_once_with(["test"])
+    def factory(a):
+        received.append(a)
+        return fake_app
+
+    with pytest.raises(SystemExit) as exc_info:
+        run_qt_app(
+            ["test"],
+            _app_factory=factory,
+            _lock_factory=lambda _: lock,
+            _window_factory=lambda: fake_window,
+        )
+    assert exc_info.value.code == 0
+    assert received == [["test"]]
 
 
 def test_run_qt_app_sets_app_properties():
     """App name, org, and style should be set."""
-    fake_app = _FakeApp(["test"])
-    fake_window = _FakeWindow()
+    fake_app, fake_window, _lock, kwargs = _make_seams(["test"])
 
-    with (
-        patch("PySide6.QtWidgets.QApplication", return_value=fake_app),
-        patch("src.gui.main_window_qt.MainWindow", return_value=fake_window),
-    ):
-        from src.main_qt import run_qt_app
-        with pytest.raises(SystemExit):
-            run_qt_app(["test"])
-        assert fake_app._name == "Easy-LIN"
-        assert fake_app._org == "Easy-LIN"
-        assert fake_app._style == "Fusion"
+    with pytest.raises(SystemExit):
+        run_qt_app(["test"], **kwargs)
+
+    assert fake_app._name == "Easy-LIN"
+    assert fake_app._org == "Easy-LIN"
+    assert fake_app._style == "Fusion"
 
 
 def test_run_qt_app_creates_and_shows_window():
-    """MainWindow should be created and shown."""
-    fake_app = _FakeApp(["test"])
-    fake_window = _FakeWindow()
+    """MainWindow should be shown."""
+    fake_app, fake_window, _lock, kwargs = _make_seams(["test"])
 
-    with (
-        patch("PySide6.QtWidgets.QApplication", return_value=fake_app),
-        patch("src.gui.main_window_qt.MainWindow", return_value=fake_window),
-    ):
-        from src.main_qt import run_qt_app
-        with pytest.raises(SystemExit):
-            run_qt_app(["test"])
-        assert fake_window.shown is True
+    with pytest.raises(SystemExit):
+        run_qt_app(["test"], **kwargs)
+
+    assert fake_window.shown is True
 
 
 def test_run_qt_app_loads_ldf_from_argv():
     """When argv has a non-flag argument, load_ldf_file should be called."""
-    fake_app = _FakeApp(["test", "sample.ldf"])
-    fake_window = _FakeWindow()
+    fake_app, fake_window, _lock, kwargs = _make_seams(["test", "sample.ldf"])
 
-    with (
-        patch("PySide6.QtWidgets.QApplication", return_value=fake_app),
-        patch("src.gui.main_window_qt.MainWindow", return_value=fake_window),
-    ):
-        from src.main_qt import run_qt_app
-        with pytest.raises(SystemExit):
-            run_qt_app(["test", "sample.ldf"])
-        assert fake_window.loaded_path == "sample.ldf"
+    with pytest.raises(SystemExit):
+        run_qt_app(["test", "sample.ldf"], **kwargs)
+
+    assert fake_window.loaded_path == "sample.ldf"
 
 
 def test_run_qt_app_skips_flag_only_argv():
     """When all args after argv[0] are flags, no LDF should be loaded."""
-    fake_app = _FakeApp(["test", "--verbose", "--debug"])
-    fake_window = _FakeWindow()
+    fake_app, fake_window, _lock, kwargs = _make_seams(["test", "--verbose", "--debug"])
 
-    with (
-        patch("PySide6.QtWidgets.QApplication", return_value=fake_app),
-        patch("src.gui.main_window_qt.MainWindow", return_value=fake_window),
-    ):
-        from src.main_qt import run_qt_app
-        with pytest.raises(SystemExit):
-            run_qt_app(["test", "--verbose", "--debug"])
-        assert fake_window.loaded_path is None
+    with pytest.raises(SystemExit):
+        run_qt_app(["test", "--verbose", "--debug"], **kwargs)
+
+    assert fake_window.loaded_path is None
 
 
 def test_run_qt_app_loads_first_non_flag_arg():
     """The first non-flag argument should be used for LDF loading."""
-    fake_app = _FakeApp(["test", "--verbose", "first.ldf", "second.ldf"])
-    fake_window = _FakeWindow()
+    fake_app, fake_window, _lock, kwargs = _make_seams(
+        ["test", "--verbose", "first.ldf", "second.ldf"]
+    )
 
-    with (
-        patch("PySide6.QtWidgets.QApplication", return_value=fake_app),
-        patch("src.gui.main_window_qt.MainWindow", return_value=fake_window),
-    ):
-        from src.main_qt import run_qt_app
-        with pytest.raises(SystemExit):
-            run_qt_app(["test", "--verbose", "first.ldf", "second.ldf"])
-        assert fake_window.loaded_path == "first.ldf"
+    with pytest.raises(SystemExit):
+        run_qt_app(["test", "--verbose", "first.ldf", "second.ldf"], **kwargs)
+
+    assert fake_window.loaded_path == "first.ldf"
 
 
 def test_run_qt_app_no_extra_args():
     """When argv has only the program name, no LDF is loaded."""
-    fake_app = _FakeApp(["test"])
-    fake_window = _FakeWindow()
+    fake_app, fake_window, _lock, kwargs = _make_seams(["test"])
 
-    with (
-        patch("PySide6.QtWidgets.QApplication", return_value=fake_app),
-        patch("src.gui.main_window_qt.MainWindow", return_value=fake_window),
-    ):
-        from src.main_qt import run_qt_app
-        with pytest.raises(SystemExit):
-            run_qt_app(["test"])
-        assert fake_window.loaded_path is None
+    with pytest.raises(SystemExit):
+        run_qt_app(["test"], **kwargs)
+
+    assert fake_window.loaded_path is None
 
 
 def test_run_qt_app_exec_return_code():
     """SystemExit code should match the value from app.exec()."""
-    fake_app = _FakeApp(["test"])
-    fake_app.exec = lambda: 42
-    fake_window = _FakeWindow()
+    fake_app, fake_window, _lock, kwargs = _make_seams(["test"], exec_return=42)
 
-    with (
-        patch("PySide6.QtWidgets.QApplication", return_value=fake_app),
-        patch("src.gui.main_window_qt.MainWindow", return_value=fake_window),
-    ):
-        from src.main_qt import run_qt_app
-        with pytest.raises(SystemExit) as exc_info:
-            run_qt_app(["test"])
-        assert exc_info.value.code == 42
+    with pytest.raises(SystemExit) as exc_info:
+        run_qt_app(["test"], **kwargs)
+
+    assert exc_info.value.code == 42
 
 
 # ---------------------------------------------------------------------------
 # Single-instance lock
 # ---------------------------------------------------------------------------
 
-class _FakeLockFile:
-    """Stand-in for QLockFile that controls whether the lock is available."""
-
-    def __init__(self, available: bool = True):
-        self._available = available
-
-    def __call__(self, path: str):
-        return self
-
-    def tryLock(self, timeout: int) -> bool:
-        return self._available
-
-
 def test_run_qt_app_single_instance_already_running():
     """When QLockFile cannot be acquired, a warning is shown and app returns early."""
-    fake_app = _FakeApp(["test"])
-    fake_window = _FakeWindow()
-    lock = _FakeLockFile(available=False)
+    fake_app, fake_window, _lock, kwargs = _make_seams(["test"], acquired=False)
+    warnings = []
+    kwargs["_warn"] = lambda *a, **kw: warnings.append(a)
 
-    with (
-        patch("PySide6.QtWidgets.QApplication", return_value=fake_app),
-        patch("PySide6.QtCore.QLockFile", lock),
-        patch("PySide6.QtWidgets.QMessageBox.warning") as mock_warn,
-    ):
-        from src.main_qt import run_qt_app
-        assert run_qt_app(["test"]) is None
-        mock_warn.assert_called_once()
-        assert fake_window.shown is False
+    assert run_qt_app(["test"], **kwargs) is None
+    assert len(warnings) == 1
+    assert fake_window.shown is False
 
 
 def test_run_qt_app_single_instance_acquired():
     """When the lock is acquired, the application starts normally."""
-    fake_app = _FakeApp(["test"])
-    fake_window = _FakeWindow()
-    lock = _FakeLockFile(available=True)
+    fake_app, fake_window, _lock, kwargs = _make_seams(["test"], acquired=True)
 
-    with (
-        patch("PySide6.QtWidgets.QApplication", return_value=fake_app),
-        patch("PySide6.QtCore.QLockFile", lock),
-        patch("src.gui.main_window_qt.MainWindow", return_value=fake_window),
-    ):
-        from src.main_qt import run_qt_app
-        with pytest.raises(SystemExit):
-            run_qt_app(["test"])
-        assert fake_window.shown is True
+    with pytest.raises(SystemExit):
+        run_qt_app(["test"], **kwargs)
+
+    assert fake_window.shown is True
