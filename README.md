@@ -41,7 +41,8 @@ The GUI is designed for blind and low-vision users:
 - Vector transport through `python-can` + Vector XL driver
 - Connect/disconnect, send frames, monitor RX/TX
 - Start and stop live CSV logging while the communication window remains open
-- Logged frames include timestamp, frame identity, status, per-byte columns, and hex payload
+- Logged CSV files start with session metadata (LDF file, master/slave names, protocol details)
+- Logged frames include timestamp, frame identity, status, checksum, per-byte columns, and hex payload
 - Automatic simulation mode when Vector backend is not available
 
 ### LIN Runtime Workflows

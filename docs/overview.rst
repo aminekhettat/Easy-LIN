@@ -70,7 +70,8 @@ LIN Runtime Workflows
 - **Live CSV capture workflow**
 
   - Start logging directly from the communication window without stopping acquisition.
-  - Append each received frame to a CSV row with wall-clock timestamp, frame ID, DLC, status, and dedicated byte columns.
+  - Write a metadata section first so the CSV captures LDF file context and selected master/slave names.
+  - Append each received frame to a CSV row with wall-clock timestamp, frame ID, DLC, status, checksum, and dedicated byte columns.
   - Stop logging at any time; active logging is also closed when the communication window is hidden.
 
 Hardware Support Assumptions

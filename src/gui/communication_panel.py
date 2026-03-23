@@ -16,6 +16,7 @@ schedule execution, and live frame monitoring.
 import csv
 import io
 import logging
+import os
 from datetime import datetime
 from dataclasses import dataclass
 from typing import Optional, Protocol
@@ -173,6 +174,7 @@ class _FrameMonitor(QWidget):
         "Frame ID",
         "DLC",
         "Status",
+        "Checksum",
         "Data 0",
         "Data 1",
         "Data 2",
@@ -190,6 +192,8 @@ class _FrameMonitor(QWidget):
         self._logging_path: Optional[str] = None
         self._logging_file = None
         self._logging_writer: Optional[csv.writer] = None
+        self._records: list[dict[str, object]] = []
+        self._session_metadata: dict[str, str] = {}
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
@@ -230,8 +234,10 @@ class _FrameMonitor(QWidget):
         row = self._table.rowCount()
         if row >= self.MAX_ROWS:
             self._table.removeRow(0)
+            self._records.pop(0)
             row = self._table.rowCount()
         self._table.insertRow(row)
+        self._records.append(record)
 
         def _i(txt, center=False):
             """Create one read-only table item."""
@@ -271,6 +277,10 @@ class _FrameMonitor(QWidget):
         self._log_btn.setText("Start CSV Log")
         self.status_message.emit(f"CSV logging stopped: {path}")
 
+    def set_session_metadata(self, metadata: dict[str, str]) -> None:
+        """Store descriptive session metadata written at the top of CSV files."""
+        self._session_metadata = {key: value for key, value in metadata.items() if value}
+
     def _frame_to_record(self, frame: ReceivedFrame) -> dict[str, object]:
         """Return normalized values for table display and CSV logging."""
         timestamp_ms = f"{frame.timestamp_ns / 1_000_000:.3f}"
@@ -286,9 +296,20 @@ class _FrameMonitor(QWidget):
             "frame_id": f"0x{frame.frame_id:02X}",
             "dlc": str(len(frame.data)),
             "status": "CRC ERR" if frame.crc_error else "OK",
+            "checksum": f"0x{frame.checksum:02X}" if frame.checksum is not None else "",
             "data_columns": data_columns,
             "data_hex": data_hex,
         }
+
+    def _write_csv_preamble(self, writer: csv.writer) -> None:
+        """Write metadata and header rows for a CSV log document."""
+        if self._session_metadata:
+            writer.writerow(["Session Metadata"])
+            writer.writerow(["Key", "Value"])
+            for key, value in self._session_metadata.items():
+                writer.writerow([key, value])
+            writer.writerow([])
+        writer.writerow(self.CSV_COLUMNS)
 
     def _write_logged_frame(self, record: dict[str, object]) -> None:
         """Append one normalized frame record to the active CSV log."""
@@ -301,6 +322,7 @@ class _FrameMonitor(QWidget):
                 record["frame_id"],
                 record["dlc"],
                 record["status"],
+                record["checksum"],
                 *record["data_columns"],
                 record["data_hex"],
             ]
@@ -312,7 +334,7 @@ class _FrameMonitor(QWidget):
         """Open a CSV file and start appending newly received frames."""
         file_handle = open(path, "w", newline="", encoding="utf-8")
         writer = csv.writer(file_handle)
-        writer.writerow(self.CSV_COLUMNS)
+        self._write_csv_preamble(writer)
         self._logging_path = path
         self._logging_file = file_handle
         self._logging_writer = writer
@@ -339,15 +361,20 @@ class _FrameMonitor(QWidget):
         )
         if not path:
             return
-        cols = ["Timestamp (ms)", "Frame ID", "DLC", "Data (hex)", "Status"]
         buf = io.StringIO()
         writer = csv.writer(buf)
-        writer.writerow(cols)
-        for row in range(self._table.rowCount()):
+        self._write_csv_preamble(writer)
+        for record in self._records:
             writer.writerow(
                 [
-                    self._table.item(row, col).text() if self._table.item(row, col) else ""
-                    for col in range(len(cols))
+                    record["timestamp_ms"],
+                    record["timestamp_iso"],
+                    record["frame_id"],
+                    record["dlc"],
+                    record["status"],
+                    record["checksum"],
+                    *record["data_columns"],
+                    record["data_hex"],
                 ]
             )
         with open(path, "w", newline="", encoding="utf-8") as fh:
@@ -356,6 +383,7 @@ class _FrameMonitor(QWidget):
     def _clear(self) -> None:
         """Remove all rows from the frame monitor."""
         self._table.setRowCount(0)
+        self._records.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -569,6 +597,7 @@ class CommunicationPanel(QWidget):
         """Update the panel whenever a new LDF file is loaded."""
         self._ldf = ldf
         self._selection = None
+        self._sync_monitor_metadata()
 
         # Frame combo
         self._frame_combo.clear()
@@ -590,6 +619,27 @@ class CommunicationPanel(QWidget):
     def configure_selection(self, master: str, slaves: list[str]) -> None:
         """Store selected master and slave nodes used to gate communication start."""
         self._selection = CommunicationSelection(master=master, slaves=tuple(slaves))
+        self._sync_monitor_metadata()
+
+    def _sync_monitor_metadata(self) -> None:
+        """Publish current LDF and node selection context to the frame monitor."""
+        ldf = self._ldf
+        selection = self._selection
+        nodes = ldf.nodes if ldf is not None else None
+        source_path = ldf.source_path if ldf is not None else ""
+        metadata = {
+            "LDF File Name": os.path.basename(source_path) if source_path else "",
+            "LDF File Path": source_path,
+            "LDF Channel Name": ldf.channel_name if ldf is not None and ldf.channel_name else "",
+            "Protocol Version": ldf.protocol_version if ldf is not None else "",
+            "Language Version": ldf.language_version if ldf is not None else "",
+            "Bus Speed (kbps)": f"{ldf.speed}" if ldf is not None else "",
+            "Declared Master": nodes.master.name if nodes is not None else "",
+            "Declared Slaves": "; ".join(nodes.slaves) if nodes is not None else "",
+            "Selected Master": selection.master if selection is not None else "",
+            "Selected Slaves": "; ".join(selection.slaves) if selection is not None else "",
+        }
+        self._monitor.set_session_metadata(metadata)
 
     def focus_primary_control(self) -> None:
         """Move focus to the first interactive control in this panel."""

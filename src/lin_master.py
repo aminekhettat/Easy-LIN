@@ -42,7 +42,7 @@ _TAG_LIN_MSG = 14
 class ReceivedFrame:
     """Represents one LIN frame received from the bus."""
 
-    __slots__ = ("frame_id", "data", "timestamp_ns", "crc_error")
+    __slots__ = ("frame_id", "data", "timestamp_ns", "crc_error", "checksum")
 
     def __init__(
         self,
@@ -50,12 +50,14 @@ class ReceivedFrame:
         data: bytes,
         timestamp_ns: int,
         crc_error: bool = False,
+        checksum: Optional[int] = None,
     ) -> None:
         """Store the parsed contents of one received LIN frame."""
         self.frame_id = frame_id
         self.data = data
         self.timestamp_ns = timestamp_ns
         self.crc_error = crc_error
+        self.checksum = checksum
 
     def __repr__(self) -> str:
         """Return a compact diagnostic representation of the received frame."""
@@ -356,6 +358,7 @@ class LINMaster:
             data=bytes(msg.data[: msg.dlc]),
             timestamp_ns=evt.timeStamp,
             crc_error=bool(msg.flags & 0x08),
+            checksum=int(msg.crc),
         )
         if self._on_frame_received:
             try:
