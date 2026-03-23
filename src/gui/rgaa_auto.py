@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from PyQt5.QtCore import Qt
+from PySide6.QtCore import Qt
 
 
 @dataclass(frozen=True)
@@ -33,14 +33,19 @@ def evaluate_main_window_automatic_rgaa(main_window) -> RGAAAutoComplianceReport
 
     viewer = getattr(main_window, "centralWidget", lambda: None)()
     tree = getattr(viewer, "_tree", None)
-    comm = getattr(main_window, "_comm_panel", None)
+
+    # Access comm panel through communication window when separated
+    comm_window = getattr(main_window, "_comm_window", None)
+    comm = getattr(comm_window, "_comm_panel", None) if comm_window else None
+    if comm is None:
+        comm = getattr(main_window, "_comm_panel", None)
 
     checks.append(tree is not None)
     checks.append(bool(getattr(tree, "accessibleName", lambda: "")().strip()) if tree else False)
     checks.append(
         bool(getattr(tree, "accessibleDescription", lambda: "")().strip()) if tree else False
     )
-    checks.append(tree.focusPolicy() == Qt.StrongFocus if tree else False)
+    checks.append(tree.focusPolicy() == Qt.FocusPolicy.StrongFocus if tree else False)
     checks.append(":focus" in tree.styleSheet() if tree else False)
 
     # Keyboard shortcut checks (RGAA navigation keyboard spirit)
@@ -52,7 +57,7 @@ def evaluate_main_window_automatic_rgaa(main_window) -> RGAAAutoComplianceReport
     ]
     checks.append(all(shortcut is not None for shortcut in shortcuts))
     checks.append(
-        all(shortcut.context() == Qt.ApplicationShortcut for shortcut in shortcuts if shortcut)
+        all(shortcut.context() == Qt.ShortcutContext.ApplicationShortcut for shortcut in shortcuts if shortcut)
     )
 
     # Ensure no single-character shortcut exists among main shortcuts.

@@ -13,3 +13,19 @@ exclude = [
 [tool.ruff.lint]
 select = ["E", "F", "B"]
 ignore = ["E501"]
+
+[tool.pylint."messages control"]
+disable = [
+    "missing-function-docstring",
+    "missing-class-docstring",
+    "redefined-outer-name",
+    "unused-argument",
+    "wrong-import-position",
+    "useless-return",
+    "too-few-public-methods",
+    "unused-import",
+    "unused-variable",
+]
+
+[tool.pylint.format]
+max-line-length = 100

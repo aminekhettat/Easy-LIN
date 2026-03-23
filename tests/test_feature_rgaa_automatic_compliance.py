@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 
 import pytest
-from PyQt5.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication
 
 from src.ldf_parser import parse_ldf_string
 from src.gui.ldf_viewer import LDFViewer

@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 
 import pytest
-from PyQt5.QtWidgets import QApplication, QDialog
+from PySide6.QtWidgets import QApplication, QDialog
 
 import src.gui.main_window_qt as main_window_qt
 from src.gui.main_window_qt import MainWindow
@@ -184,7 +184,7 @@ def test_issues_dialog_always_returns_false_for_error_files(
     qapp: QApplication,
 ) -> None:
     """An error file dialog must return False even when exec_ returns Accepted."""
-    monkeypatch.setattr(QDialog, "exec_", lambda _self: QDialog.Accepted)
+    monkeypatch.setattr(QDialog, "exec", lambda _self: QDialog.DialogCode.Accepted)
 
     window = MainWindow()
     result = window._show_ldf_issues_dialog("/my.ldf", [_error_issue()])
@@ -197,7 +197,7 @@ def test_issues_dialog_returns_true_when_warnings_accepted(
     qapp: QApplication,
 ) -> None:
     """Warning dialog returns True when user clicks 'Open Anyway' (Accepted)."""
-    monkeypatch.setattr(QDialog, "exec_", lambda _self: QDialog.Accepted)
+    monkeypatch.setattr(QDialog, "exec", lambda _self: QDialog.DialogCode.Accepted)
 
     window = MainWindow()
     result = window._show_ldf_issues_dialog("/my.ldf", [_warning_issue()])
@@ -210,7 +210,7 @@ def test_issues_dialog_returns_false_when_warnings_cancelled(
     qapp: QApplication,
 ) -> None:
     """Warning dialog returns False when user clicks Cancel (Rejected)."""
-    monkeypatch.setattr(QDialog, "exec_", lambda _self: QDialog.Rejected)
+    monkeypatch.setattr(QDialog, "exec", lambda _self: QDialog.DialogCode.Rejected)
 
     window = MainWindow()
     result = window._show_ldf_issues_dialog("/my.ldf", [_warning_issue()])
@@ -223,7 +223,7 @@ def test_issues_dialog_is_shown_with_both_errors_and_warnings(
     qapp: QApplication,
 ) -> None:
     """A file with mixed errors+warnings is still blocked (errors take priority)."""
-    monkeypatch.setattr(QDialog, "exec_", lambda _self: QDialog.Accepted)
+    monkeypatch.setattr(QDialog, "exec", lambda _self: QDialog.DialogCode.Accepted)
 
     issues = [_error_issue(), _warning_issue()]
     window = MainWindow()

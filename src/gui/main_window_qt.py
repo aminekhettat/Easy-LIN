@@ -1,12 +1,12 @@
-"""Easy-LIN main window for the preserved PyQt frontend.
+"""Easy-LIN main window for the PySide6 frontend.
 
-Provides the top-level application window hosting the LDF viewer, hardware
-communication dock, menus, toolbar, and persistent window state.
+Provides the top-level application window hosting the LDF viewer,
+menus, toolbar, and persistent window state.
 
 :author: Amine Khettat
 :company: BLIND SYSTEMS
 :website: https://www.blindsystems.org
-:version: 0.5.2
+:version: 0.6.0
 :copyright: Copyright (c) 2026 Amine Khettat
 :license: Easy-LIN Source-Available License Version 1.0. See LICENSE.
 :disclaimer: Provided "AS IS", without warranties or liability, as described
@@ -18,12 +18,9 @@ import os
 from datetime import datetime
 from typing import List, Optional
 
-from PyQt5.QtWidgets import (
+from PySide6.QtWidgets import (
     QMainWindow,
     QWidget,
-    QDockWidget,
-    QAction,
-    QShortcut,
     QFileDialog,
     QMessageBox,
     QLabel,
@@ -33,20 +30,23 @@ from PyQt5.QtWidgets import (
     QVBoxLayout,
     QTextBrowser,
     QPlainTextEdit,
+    QComboBox,
+    QListWidget,
+    QListWidgetItem,
 )
-from PyQt5.QtCore import Qt, QSettings, QSize, QTimer
-from PyQt5.QtGui import QFont, QKeySequence, QColor, QPixmap
+from PySide6.QtCore import Qt, QSettings, QSize, QTimer
+from PySide6.QtGui import QAction, QFont, QKeySequence, QColor, QPixmap, QShortcut
 
 from src.ldf_parser import parse_ldf, LDFFile, LDFParseError
 from src.ldf_consistency import validate_ldf
 from src.gui.ldf_viewer import LDFViewer
-from src.gui.communication_panel import CommunicationPanel
+from src.gui.communication_window import CommunicationWindow
 
 log = logging.getLogger(__name__)
 
 APP_NAME = "Easy-LIN"
 APP_ORG = "Easy-LIN"
-APP_VERSION = "0.5.2"
+APP_VERSION = "0.6.0"
 APP_AUTHOR = "Amine Khettat"
 APP_COMPANY = "BLIND SYSTEMS"
 APP_CONTACT_EMAIL = "contact@blindsystems.org"
@@ -73,6 +73,7 @@ class MainWindow(QMainWindow):
         self._ldf_path: Optional[str] = None
         self._settings = QSettings(APP_ORG, APP_NAME)
         self._region_cycle_index = 0
+        self._comm_selection: Optional[tuple[str, list[str]]] = None
 
         self.setWindowTitle(APP_NAME)
         self.setMinimumSize(1100, 700)
@@ -99,28 +100,20 @@ class MainWindow(QMainWindow):
             "- Monitor and send LIN frames in real time<br>"
             "- Execute schedule tables automatically</p>"
         )
-        placeholder_lbl.setAlignment(Qt.AlignCenter)
-        placeholder_lbl.setTextFormat(Qt.RichText)
+        placeholder_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        placeholder_lbl.setTextFormat(Qt.TextFormat.RichText)
         font = QFont()
         font.setPointSize(11)
         placeholder_lbl.setFont(font)
-        from PyQt5.QtWidgets import QVBoxLayout
-
         pl = QVBoxLayout(self._placeholder)
         pl.addWidget(placeholder_lbl)
         self.setCentralWidget(self._placeholder)
 
-        # Communication dock (right side)
-        self._comm_panel = CommunicationPanel()
-        self._comm_panel.setObjectName("communicationPanel")
-        self._comm_panel.status_message.connect(self._on_comm_status_message)
-        self._comm_panel.communication_state_changed.connect(self._set_comm_status)
-        dock = QDockWidget("Communication", self)
-        dock.setObjectName("CommunicationDock")
-        dock.setWidget(self._comm_panel)
-        dock.setMinimumWidth(420)
-        self.addDockWidget(Qt.RightDockWidgetArea, dock)
-        self._comm_dock = dock
+        # Separate communication window
+        self._comm_window = CommunicationWindow()
+        self._comm_window.status_message.connect(self._on_comm_status_message)
+        self._comm_window.communication_state_changed.connect(self._set_comm_status)
+        self._comm_window.hide()
 
         self._build_status_tracker()
         self._announce_event("Ready", timeout_ms=2000)
@@ -182,6 +175,18 @@ class MainWindow(QMainWindow):
             "Error": STATUS_COLOR_ERROR,
         }
         self._set_status_label_color(self._sb_comm, state_map.get(state, STATUS_COLOR_INFO))
+        _viewer = self.centralWidget()
+        if isinstance(_viewer, LDFViewer):
+            _viewer.lock_node_selection(state == "Connected")
+
+    def _on_node_selection_changed(self, master: str, slaves: list[str]) -> None:
+        """Update communication selection when node checkboxes change in the LDF tree."""
+        self._comm_selection = (master, slaves)
+        self._comm_window.configure_selection(master, slaves)
+        self._announce_event(
+            f"Node selection: master {master!r}, {len(slaves)} slave(s)",
+            timeout_ms=3000,
+        )
 
     def _set_ldf_status(self, ldf: LDFFile) -> None:
         """Update persistent LDF summary field."""
@@ -248,7 +253,10 @@ class MainWindow(QMainWindow):
 
         # ---- View -------------------------------------------------------
         view_menu = mb.addMenu("&View")
-        view_menu.addAction(self._comm_dock.toggleViewAction())
+        self._toggle_comm_action = QAction("Communication Window", self)
+        self._toggle_comm_action.setShortcut("Ctrl+Shift+C")
+        self._toggle_comm_action.triggered.connect(self._toggle_communication_window)
+        view_menu.addAction(self._toggle_comm_action)
 
         # ---- Help -------------------------------------------------------
         help_menu = mb.addMenu("&Help")
@@ -331,9 +339,18 @@ class MainWindow(QMainWindow):
         else:
             viewer = LDFViewer(ldf)
             self.setCentralWidget(viewer)
+            viewer.node_selection_changed.connect(self._on_node_selection_changed)
 
-        # Update communication panel
-        self._comm_panel.load_ldf(ldf)
+        # Update communication window and reset communication selection.
+        self._comm_window.load_ldf(ldf)
+        self._comm_selection = None
+        # Initialize comm selection from tree node checkboxes.
+        _cur_viewer = self.centralWidget()
+        if isinstance(_cur_viewer, LDFViewer):
+            _master, _slaves = _cur_viewer.selected_nodes()
+            if _master and _slaves:
+                self._comm_selection = (_master, _slaves)
+                self._comm_window.configure_selection(_master, _slaves)
 
         # Save to recent files
         self._add_recent(path)
@@ -420,15 +437,15 @@ class MainWindow(QMainWindow):
         layout.addWidget(report_view)
 
         btn_box = QDialogButtonBox()
-        save_btn = btn_box.addButton("Save Report\u2026", QDialogButtonBox.ActionRole)
+        save_btn = btn_box.addButton("Save Report\u2026", QDialogButtonBox.ButtonRole.ActionRole)
         save_btn.setAccessibleName("Save validation report to a file")
         if has_errors:
-            close_btn = btn_box.addButton(QDialogButtonBox.Close)
+            close_btn = btn_box.addButton(QDialogButtonBox.StandardButton.Close)
             close_btn.setDefault(True)
         else:
-            open_btn = btn_box.addButton("Open Anyway", QDialogButtonBox.AcceptRole)
+            open_btn = btn_box.addButton("Open Anyway", QDialogButtonBox.ButtonRole.AcceptRole)
             open_btn.setAccessibleName("Open the LDF file despite the warnings")
-            cancel_btn = btn_box.addButton(QDialogButtonBox.Cancel)
+            cancel_btn = btn_box.addButton(QDialogButtonBox.StandardButton.Cancel)
             cancel_btn.setDefault(True)
 
         layout.addWidget(btn_box)
@@ -453,27 +470,27 @@ class MainWindow(QMainWindow):
         btn_box.accepted.connect(dlg.accept)
         btn_box.rejected.connect(dlg.reject)
 
-        result = dlg.exec_()
+        result = dlg.exec()
         if has_errors:
             return False
-        return result == QDialog.Accepted
+        return result == QDialog.DialogCode.Accepted
 
     def _build_shortcuts(self) -> None:
         """Create global shortcuts that work regardless of menu focus state."""
         self._shortcut_focus_tree = QShortcut(QKeySequence("Ctrl+1"), self)
-        self._shortcut_focus_tree.setContext(Qt.ApplicationShortcut)
+        self._shortcut_focus_tree.setContext(Qt.ShortcutContext.ApplicationShortcut)
         self._shortcut_focus_tree.activated.connect(self._focus_ldf_tree)
 
         self._shortcut_focus_details = QShortcut(QKeySequence("Ctrl+2"), self)
-        self._shortcut_focus_details.setContext(Qt.ApplicationShortcut)
+        self._shortcut_focus_details.setContext(Qt.ShortcutContext.ApplicationShortcut)
         self._shortcut_focus_details.activated.connect(self._focus_communication)
 
         self._shortcut_next_region = QShortcut(QKeySequence("F6"), self)
-        self._shortcut_next_region.setContext(Qt.ApplicationShortcut)
+        self._shortcut_next_region.setContext(Qt.ShortcutContext.ApplicationShortcut)
         self._shortcut_next_region.activated.connect(self._focus_next_region)
 
         self._shortcut_prev_region = QShortcut(QKeySequence("Shift+F6"), self)
-        self._shortcut_prev_region.setContext(Qt.ApplicationShortcut)
+        self._shortcut_prev_region.setContext(Qt.ShortcutContext.ApplicationShortcut)
         self._shortcut_prev_region.activated.connect(self._focus_previous_region)
 
     # ------------------------------------------------------------------
@@ -518,14 +535,14 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(dialog)
 
         logo_label = QLabel()
-        logo_label.setAlignment(Qt.AlignCenter)
+        logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         logo_label.setAccessibleName("Company logo")
         logo_label.setAccessibleDescription("Logo image loaded from bundled local file")
 
         logo_pixmap = self._load_logo_pixmap(APP_COMPANY_LOGO_PATH)
         if logo_pixmap is not None:
             logo_label.setPixmap(
-                logo_pixmap.scaled(220, 120, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                logo_pixmap.scaled(220, 120, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
             )
         else:
             logo_label.setText(APP_COMPANY)
@@ -538,12 +555,12 @@ class MainWindow(QMainWindow):
         about_text.setHtml(self._build_about_html())
         layout.addWidget(about_text)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         buttons.rejected.connect(dialog.reject)
         buttons.accepted.connect(dialog.accept)
         layout.addWidget(buttons)
 
-        dialog.exec_()
+        dialog.exec()
 
     @staticmethod
     def _build_about_html() -> str:
@@ -585,13 +602,111 @@ class MainWindow(QMainWindow):
             "Keyboard shortcuts:\n\n"
             "Ctrl+O: Open LDF file\n"
             "Ctrl+1: Focus hierarchy tree\n"
-            "Ctrl+2: Focus communication panel\n"
+            "Ctrl+2: Focus communication window\n"
+            "Ctrl+Shift+C: Toggle communication window\n"
             "Ctrl+C: Copy focused hierarchy line\n"
+            "Ctrl+F: Search in hierarchy tree\n"
+            "F3: Find next match\n"
+            "Alt+Up/Down: Navigate to previous/next sibling\n"
+            "Ctrl+Shift+Right: Expand all children\n"
+            "Ctrl+Shift+Left: Collapse all children\n"
             "F6: Focus next region\n"
             "Shift+F6: Focus previous region\n"
             "F1: Open accessibility help\n\n"
             "Tip: use Tab and Shift+Tab to move between controls.",
         )
+
+    def _resolve_node_choices(self) -> tuple[list[str], list[str]]:
+        """Extract candidate masters and slaves from the currently loaded LDF."""
+        if self._ldf is None or self._ldf.nodes is None:
+            return [], []
+
+        masters: list[str] = []
+        node_master = getattr(self._ldf.nodes, "master", None)
+        if node_master is not None:
+            if isinstance(node_master, list):
+                masters = [str(m) for m in node_master if str(m).strip()]
+            else:
+                name = getattr(node_master, "name", str(node_master))
+                if str(name).strip():
+                    masters = [str(name)]
+
+        slaves = [str(s) for s in (self._ldf.nodes.slaves or []) if str(s).strip()]
+        return masters, slaves
+
+    def _prompt_comm_selection(self) -> Optional[tuple[str, list[str]]]:
+        """Prompt the user to select one master and at least one slave node."""
+        masters, slaves = self._resolve_node_choices()
+        if not masters:
+            QMessageBox.warning(self, APP_NAME, "No master node found in this LDF.")
+            return None
+        if not slaves:
+            QMessageBox.warning(self, APP_NAME, "No slave node found in this LDF.")
+            return None
+
+        if len(masters) == 1 and len(slaves) == 1:
+            return masters[0], [slaves[0]]
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Communication Node Selection")
+        dlg.setMinimumWidth(420)
+        layout = QVBoxLayout(dlg)
+
+        layout.addWidget(QLabel("Select one master:"))
+        master_combo = QComboBox()
+        for master in masters:
+            master_combo.addItem(master)
+        layout.addWidget(master_combo)
+
+        layout.addWidget(QLabel("Select at least one slave:"))
+        slaves_list = QListWidget()
+        slaves_list.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
+        for slave in slaves:
+            item = QListWidgetItem(slave)
+            slaves_list.addItem(item)
+        slaves_list.selectAll()
+        layout.addWidget(slaves_list)
+
+        btn_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        layout.addWidget(btn_box)
+
+        def _accept_if_valid() -> None:
+            selected_slaves = [i.text() for i in slaves_list.selectedItems()]
+            if not selected_slaves:
+                QMessageBox.warning(dlg, APP_NAME, "Select at least one slave to continue.")
+                return
+            dlg.accept()
+
+        btn_box.accepted.connect(_accept_if_valid)
+        btn_box.rejected.connect(dlg.reject)
+
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return None
+
+        selected_slaves = [i.text() for i in slaves_list.selectedItems()]
+        return master_combo.currentText(), selected_slaves
+
+    def _ensure_comm_selection(self) -> bool:
+        """Ensure communication node selection is available before showing comm window."""
+        if self._ldf is None:
+            self._announce_event("Load an LDF file first.", timeout_ms=3000)
+            return False
+        if self._comm_selection is not None:
+            return True
+
+        selection = self._prompt_comm_selection()
+        if selection is None:
+            self._announce_event("Communication setup cancelled.", timeout_ms=3000)
+            return False
+
+        master, slaves = selection
+        self._comm_window.configure_selection(master, slaves)
+        self._comm_selection = (master, slaves)
+        self._announce_event(
+            f"Communication selection: master {master}, slaves {len(slaves)}",
+            timeout_ms=4000,
+        )
+        return True
 
     def _focus_ldf_tree(self) -> None:
         """Move focus to the hierarchy tree in the LDF viewer."""
@@ -601,7 +716,7 @@ class MainWindow(QMainWindow):
             self._region_cycle_index = 0
             self._announce_event("Focus: hierarchy tree", timeout_ms=2000)
         elif viewer is not None:
-            viewer.setFocus(Qt.ShortcutFocusReason)
+            viewer.setFocus(Qt.FocusReason.ShortcutFocusReason)
 
     def _focus_ldf_details(self) -> None:
         """Compatibility alias that focuses the hierarchy tree."""
@@ -611,13 +726,25 @@ class MainWindow(QMainWindow):
             self._region_cycle_index = 0
             self._announce_event("Focus: hierarchy tree", timeout_ms=2000)
         elif viewer is not None:
-            viewer.setFocus(Qt.ShortcutFocusReason)
+            viewer.setFocus(Qt.FocusReason.ShortcutFocusReason)
 
     def _focus_communication(self) -> None:
-        """Move focus to the communication panel controls."""
-        self._comm_panel.focus_primary_control()
+        """Show and focus the communication window controls."""
+        if not self._ensure_comm_selection():
+            return
+        self._comm_window.focus_primary_control()
         self._region_cycle_index = 1
         self._announce_event("Focus: communication", timeout_ms=2000)
+
+    def _toggle_communication_window(self) -> None:
+        """Show or hide the standalone communication window."""
+        if self._comm_window.isVisible():
+            self._comm_window.hide()
+            return
+        if not self._ensure_comm_selection():
+            return
+        self._comm_window.show()
+        self._comm_window.raise_()
 
     def _focus_next_region(self) -> None:
         """Cycle keyboard focus to the next major UI region."""
@@ -650,16 +777,15 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def _restore_geometry(self) -> None:
-        """Restore window geometry and dock layout from settings."""
+        """Restore window geometry from settings."""
         geom = self._settings.value("geometry")
-        state = self._settings.value("windowState")
         if geom:
             self.restoreGeometry(geom)
-        if state:
-            self.restoreState(state)
 
     def closeEvent(self, event) -> None:
-        """Persist geometry and dock state before closing the window."""
+        """Persist geometry before closing the window and communication window."""
         self._settings.setValue("geometry", self.saveGeometry())
-        self._settings.setValue("windowState", self.saveState())
+        # Force-close the communication window (bypass its hide-on-close)
+        self._comm_window._settings.setValue("comm_geometry", self._comm_window.saveGeometry())
+        self._comm_window.deleteLater()
         super().closeEvent(event)

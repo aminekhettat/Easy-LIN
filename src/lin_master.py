@@ -6,7 +6,7 @@ frame transmission, schedule execution, and receive callback dispatch.
 :author: Amine Khettat
 :company: BLIND SYSTEMS
 :website: https://www.blindsystems.org
-:version: 0.5.2
+:version: 0.6.0
 :copyright: Copyright (c) 2026 Amine Khettat
 :license: Easy-LIN Source-Available License Version 1.0. See LICENSE.
 :disclaimer: Provided "AS IS", without warranties or liability, as described
@@ -87,10 +87,12 @@ class LINMaster:
     def __init__(
         self,
         on_frame_received: Optional[Callable[[ReceivedFrame], None]] = None,
+        on_frame_changed: Optional[Callable[[ReceivedFrame, Optional[bytes]], None]] = None,
         on_error: Optional[Callable[[str], None]] = None,
     ) -> None:
         """Initialize the master controller and its background-thread state."""
         self._on_frame_received = on_frame_received
+        self._on_frame_changed = on_frame_changed
         self._on_error = on_error
 
         self._api: Optional[VectorXLApi] = None
@@ -105,6 +107,9 @@ class LINMaster:
         self._sched_thread: Optional[threading.Thread] = None
         self._sched_stop = threading.Event()
 
+        # Last payload observed for each frame ID (used by changed-frame callback).
+        self._last_frame_data: dict[int, bytes] = {}
+
     # ------------------------------------------------------------------
     # Properties
     # ------------------------------------------------------------------
@@ -118,6 +123,27 @@ class LINMaster:
     def ldf(self) -> Optional[LDFFile]:
         """Return the currently loaded LDF associated with the connection."""
         return self._ldf
+
+    @property
+    def dll_path(self) -> Optional[str]:
+        """Return the DLL path from the active API connection, or None."""
+        return getattr(self._api, 'dll_path', None)
+
+    def preflight(self) -> tuple[bool, str]:
+        """Verify the Vector XL DLL is callable before a live connection attempt.
+
+        Returns:
+            ``(True, 'OK')`` when the DLL can execute ``xlOpenDriver`` successfully.
+            ``(False, <reason>)`` if the driver is missing, not licensed, or otherwise
+            non-functional.
+        """
+        try:
+            api = VectorXLApi()
+            return api.preflight()
+        except VectorXLDriverNotFoundError as exc:
+            return False, str(exc)
+        except Exception as exc:  # noqa: BLE001
+            return False, str(exc)
 
     # ------------------------------------------------------------------
     # Hardware enumeration (static helper)
@@ -211,6 +237,7 @@ class LINMaster:
 
         self._api.activate_channel(port_handle, channel_mask)
         self._connected = True
+        self._last_frame_data.clear()
 
         # Start RX thread
         self._rx_stop.clear()
@@ -243,6 +270,7 @@ class LINMaster:
         self._port_handle = -1
         self._connected = False
         self._ldf = None
+        self._last_frame_data.clear()
         log.info("LIN master disconnected.")
 
     # ------------------------------------------------------------------
@@ -310,18 +338,7 @@ class LINMaster:
                     time.sleep(0.001)  # 1 ms poll interval
                     continue
                 if evt.tag == _TAG_LIN_MSG:
-                    msg = evt.lin_msg
-                    frame = ReceivedFrame(
-                        frame_id=msg.id & 0x3F,
-                        data=bytes(msg.data[: msg.dlc]),
-                        timestamp_ns=evt.timeStamp,
-                        crc_error=bool(msg.flags & 0x08),
-                    )
-                    if self._on_frame_received:
-                        try:
-                            self._on_frame_received(frame)
-                        except Exception:
-                            log.exception("Error in on_frame_received callback.")
+                    self._handle_rx_lin_event(evt)
             except VectorXLError as exc:
                 log.warning("RX error: %s", exc)
                 if self._on_error:
@@ -330,6 +347,32 @@ class LINMaster:
             except Exception:
                 log.exception("Unexpected error in RX loop.")
                 time.sleep(0.010)
+
+    def _handle_rx_lin_event(self, evt) -> None:
+        """Build a received frame from one XL event and dispatch callbacks."""
+        msg = evt.lin_msg
+        frame = ReceivedFrame(
+            frame_id=msg.id & 0x3F,
+            data=bytes(msg.data[: msg.dlc]),
+            timestamp_ns=evt.timeStamp,
+            crc_error=bool(msg.flags & 0x08),
+        )
+        if self._on_frame_received:
+            try:
+                self._on_frame_received(frame)
+            except Exception:
+                log.exception("Error in on_frame_received callback.")
+
+        previous_data = self._last_frame_data.get(frame.frame_id)
+        if previous_data == frame.data:
+            return
+
+        self._last_frame_data[frame.frame_id] = frame.data
+        if self._on_frame_changed:
+            try:
+                self._on_frame_changed(frame, previous_data)
+            except Exception:
+                log.exception("Error in on_frame_changed callback.")
 
     def _schedule_loop(self, schedule: LDFScheduleTable) -> None:
         """Background thread: execute the schedule table repeatedly."""

@@ -17,7 +17,12 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libxkbcommon0 libxcb-cursor0
 
       - name: Install dependencies
         run: |
@@ -27,5 +32,16 @@ jobs:
       - name: Enforce LDF confidentiality policy
         run: python tools/confidential_ldf_guard.py --mode pre-push
 
+      - name: Run Ruff linter
+        run: ruff check src/ tests/
+
+      - name: Run Pylint
+        run: pylint main.py src tests tools
+
       - name: Run tests with strict coverage
+        env:
+          QT_QPA_PLATFORM: offscreen
         run: pytest
+
+      - name: Build Sphinx HTML docs
+        run: python -m sphinx -b html docs docs/_build/html

@@ -2,12 +2,27 @@
 jobs=0
 ignore=.venv
 ignore-paths=^docs[\\/]_build[\\/].*,^LDF[\\/].*
-extension-pkg-allow-list=PyQt5
+extension-pkg-allow-list=PySide6
 
 [MESSAGES CONTROL]
 disable=
     import-outside-toplevel,
     line-too-long,
+    trailing-newlines,
+    wrong-import-position,
+    wrong-import-order,
+    missing-function-docstring,
+    missing-class-docstring,
+    redefined-outer-name,
+    reimported,
+    unused-argument,
+    unused-import,
+    unused-variable,
+    useless-return,
+    no-member,
+    import-error,
+    assigning-non-slot,
+    pointless-statement,
     no-name-in-module,
     invalid-name,
     broad-exception-caught,

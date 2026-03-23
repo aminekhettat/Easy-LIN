@@ -20,9 +20,9 @@ from __future__ import annotations
 import os
 
 import pytest
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QKeyEvent
-from PyQt5.QtWidgets import QApplication
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QKeyEvent
+from PySide6.QtWidgets import QApplication
 
 from src.ldf_parser import parse_ldf_string
 from src.gui.ldf_viewer import LDFViewer
@@ -209,9 +209,10 @@ def test_qt_hierarchy_and_controls_have_accessible_names(
 
     window = main_window_qt.MainWindow()
     window.show()
-    assert window._comm_panel._refresh_btn.accessibleName() == "Refresh hardware channels"
-    assert window._comm_panel._send_btn.accessibleName() == "Send frame"
-    assert window._comm_panel._sched_start_btn.accessibleName() == "Run schedule"
+    comm = window._comm_window._comm_panel
+    assert comm._refresh_btn.accessibleName() == "Refresh hardware channels"
+    assert comm._send_btn.accessibleName() == "Send frame"
+    assert comm._sched_start_btn.accessibleName() == "Run schedule"
 
 
 def test_qt_hierarchy_diagnostics_precede_schedule_tables(
@@ -379,7 +380,7 @@ def test_qt_tree_left_key_collapses_without_jumping_to_top(
     assert viewer._tree.currentItem() is nodes
     assert nodes.isExpanded()
 
-    event = QKeyEvent(QKeyEvent.KeyPress, Qt.Key_Left, Qt.NoModifier)
+    event = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Left, Qt.KeyboardModifier.NoModifier)
     QApplication.sendEvent(viewer._tree, event)
     qapp.processEvents()
 
@@ -442,8 +443,8 @@ def test_main_window_status_bar_tracks_communication_and_events(
     window = main_window_qt.MainWindow()
     window.show()
 
-    window._comm_panel.communication_state_changed.emit("Connected")
-    window._comm_panel.status_message.emit("Connected to LIN hardware.")
+    window._comm_window.communication_state_changed.emit("Connected")
+    window._comm_window.status_message.emit("Connected to LIN hardware.")
     qapp.processEvents()
 
     assert window._sb_comm.text() == "Comm: Connected"
@@ -510,10 +511,10 @@ def test_main_window_region_cycle_and_shortcut_contexts(
     qapp.processEvents()
     assert window._region_cycle_index == 0
 
-    assert window._shortcut_focus_tree.context() == Qt.ApplicationShortcut
-    assert window._shortcut_focus_details.context() == Qt.ApplicationShortcut
-    assert window._shortcut_next_region.context() == Qt.ApplicationShortcut
-    assert window._shortcut_prev_region.context() == Qt.ApplicationShortcut
+    assert window._shortcut_focus_tree.context() == Qt.ShortcutContext.ApplicationShortcut
+    assert window._shortcut_focus_details.context() == Qt.ShortcutContext.ApplicationShortcut
+    assert window._shortcut_next_region.context() == Qt.ShortcutContext.ApplicationShortcut
+    assert window._shortcut_prev_region.context() == Qt.ShortcutContext.ApplicationShortcut
 
 
 def test_about_html_contains_metadata_and_clickable_links() -> None:

@@ -12,7 +12,7 @@ sys.path.insert(0, str(ROOT))
 project = "Easy-LIN"
 author = "Amine Khettat"
 copyright = "2026, Amine Khettat"
-release = "0.5.2"
+release = "0.6.0"
 version = release
 
 extensions = [
@@ -38,4 +38,3 @@ napoleon_numpy_docstring = True
 
 html_theme = "alabaster"
 html_title = f"Easy-LIN {release} documentation"
-

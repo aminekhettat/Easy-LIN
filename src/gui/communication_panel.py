@@ -6,17 +6,20 @@ schedule execution, and live frame monitoring.
 :author: Amine Khettat
 :company: BLIND SYSTEMS
 :website: https://www.blindsystems.org
-:version: 0.5.2
+:version: 0.6.0
 :copyright: Copyright (c) 2026 Amine Khettat
 :license: Easy-LIN Source-Available License Version 1.0. See LICENSE.
 :disclaimer: Provided "AS IS", without warranties or liability, as described
         in LICENSE.
 """
 
+import csv
+import io
 import logging
-from typing import Optional
+from dataclasses import dataclass
+from typing import Optional, Protocol
 
-from PyQt5.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
     QHBoxLayout,
@@ -30,14 +33,114 @@ from PyQt5.QtWidgets import (
     QLineEdit,
     QCheckBox,
     QSplitter,
+    QFileDialog,
 )
-from PyQt5.QtCore import Qt, pyqtSignal, QObject, pyqtSlot
-from PyQt5.QtGui import QColor
+from PySide6.QtCore import Qt, Signal, QObject, Slot
+from PySide6.QtGui import QColor
 
 from src.ldf_parser import LDFFile
 from src.lin_master import LINMaster, ReceivedFrame
 
 log = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class CommunicationSelection:
+    """Selected LDF nodes used to initiate communication."""
+
+    master: str
+    slaves: tuple[str, ...]
+
+
+class CommunicationBackend(Protocol):
+    """Backend contract for LIN communication providers."""
+
+    @property
+    def is_connected(self) -> bool:
+        """Return current connection state."""
+
+    def list_lin_channels(self) -> list[dict]:
+        """Return available LIN channels for this backend."""
+
+    def connect(self, channel_mask: int, ldf: Optional[LDFFile]) -> None:
+        """Connect to selected channel."""
+
+    def disconnect(self) -> None:
+        """Disconnect current channel."""
+
+    def send_frame(self, frame_id: int) -> None:
+        """Send master request."""
+
+    def send_frame_data(self, frame_id: int, data: list[int]) -> None:
+        """Send master-published response data."""
+
+    def run_schedule(self, schedule) -> None:
+        """Start schedule execution."""
+
+    def stop_schedule(self) -> None:
+        """Stop schedule execution."""
+
+    def preflight(self) -> tuple[bool, str]:
+        """Verify the backend driver is functional before a real connect attempt."""
+
+
+class VectorBackendAdapter:
+    """Vector implementation of the communication backend contract."""
+
+    def __init__(
+        self,
+        on_frame_received,
+        on_error,
+        on_frame_changed,
+    ) -> None:
+        """Instantiate LIN master callbacks for Vector hardware."""
+        self._master = LINMaster(
+            on_frame_received=on_frame_received,
+            on_error=on_error,
+            on_frame_changed=on_frame_changed,
+        )
+
+    @property
+    def is_connected(self) -> bool:
+        """Return current Vector connection state."""
+        return self._master.is_connected
+
+    @property
+    def dll_path(self) -> Optional[str]:
+        """Return the loaded DLL path from the underlying LIN master."""
+        return getattr(self._master, 'dll_path', None)
+
+    def preflight(self) -> tuple[bool, str]:
+        """Forward a DLL preflight check to the underlying LIN master."""
+        return self._master.preflight()
+
+    def list_lin_channels(self) -> list[dict]:
+        """Return channels exposed by Vector XL."""
+        return LINMaster.list_lin_channels()
+
+    def connect(self, channel_mask: int, ldf: Optional[LDFFile]) -> None:
+        """Connect through Vector LIN master."""
+        self._master.connect(channel_mask=channel_mask, ldf=ldf)
+
+    def disconnect(self) -> None:
+        """Disconnect Vector LIN master."""
+        self._master.disconnect()
+
+    def send_frame(self, frame_id: int) -> None:
+        """Forward master request."""
+        self._master.send_frame(frame_id)
+
+    def send_frame_data(self, frame_id: int, data: list[int]) -> None:
+        """Forward master response."""
+        self._master.send_frame_data(frame_id, data)
+
+    def run_schedule(self, schedule) -> None:
+        """Forward schedule execution request."""
+        self._master.run_schedule(schedule)
+
+    def stop_schedule(self) -> None:
+        """Forward stop schedule request."""
+        self._master.stop_schedule()
 
 
 # ---------------------------------------------------------------------------
@@ -48,8 +151,8 @@ log = logging.getLogger(__name__)
 class _Bridge(QObject):
     """Emits Qt signals from non-GUI threads so that GUI updates are safe."""
 
-    frame_received = pyqtSignal(object)  # ReceivedFrame
-    error_occurred = pyqtSignal(str)
+    frame_received = Signal(object)  # ReceivedFrame
+    error_occurred = Signal(str)
 
 
 # ---------------------------------------------------------------------------
@@ -71,6 +174,11 @@ class _FrameMonitor(QWidget):
         hdr = QHBoxLayout()
         hdr.addWidget(QLabel("<b>Frame Monitor</b>"))
         hdr.addStretch()
+        self._export_btn = QPushButton("Export CSV")
+        self._export_btn.setFixedWidth(90)
+        self._export_btn.setAccessibleName("Export frame monitor to CSV")
+        self._export_btn.clicked.connect(self._export_csv)
+        hdr.addWidget(self._export_btn)
         self._clear_btn = QPushButton("Clear")
         self._clear_btn.setFixedWidth(70)
         self._clear_btn.clicked.connect(self._clear)
@@ -80,11 +188,11 @@ class _FrameMonitor(QWidget):
         cols = ["Timestamp (ms)", "Frame ID", "DLC", "Data (hex)", "Status"]
         self._table = QTableWidget(0, len(cols))
         self._table.setHorizontalHeaderLabels(cols)
-        self._table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
+        self._table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         for c in (0, 1, 2, 4):
-            self._table.horizontalHeader().setSectionResizeMode(c, QHeaderView.ResizeToContents)
+            self._table.horizontalHeader().setSectionResizeMode(c, QHeaderView.ResizeMode.ResizeToContents)
         self._table.verticalHeader().setVisible(False)
-        self._table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._table.setAlternatingRowColors(True)
         layout.addWidget(self._table)
 
@@ -103,9 +211,9 @@ class _FrameMonitor(QWidget):
         def _i(txt, center=False):
             """Create one read-only table item."""
             it = QTableWidgetItem(str(txt))
-            it.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
+            it.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
             if center:
-                it.setTextAlignment(Qt.AlignCenter | Qt.AlignVCenter)
+                it.setTextAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
             return it
 
         self._table.setItem(row, 0, _i(f"{ts_ms:.3f}", center=True))
@@ -119,6 +227,27 @@ class _FrameMonitor(QWidget):
             status_item.setForeground(QColor("green"))
         self._table.setItem(row, 4, status_item)
         self._table.scrollToBottom()
+
+    def _export_csv(self) -> None:
+        """Export the current monitor contents to a user-chosen CSV file."""
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export Frame Monitor", "", "CSV files (*.csv);;All files (*)"
+        )
+        if not path:
+            return
+        cols = ["Timestamp (ms)", "Frame ID", "DLC", "Data (hex)", "Status"]
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(cols)
+        for row in range(self._table.rowCount()):
+            writer.writerow(
+                [
+                    self._table.item(row, col).text() if self._table.item(row, col) else ""
+                    for col in range(len(cols))
+                ]
+            )
+        with open(path, "w", newline="", encoding="utf-8") as fh:
+            fh.write(buf.getvalue())
 
     def _clear(self) -> None:
         """Remove all rows from the frame monitor."""
@@ -139,19 +268,21 @@ class CommunicationPanel(QWidget):
       - Live frame monitor
     """
 
-    status_message = pyqtSignal(str)
+    status_message = Signal(str)
     """Signal emitted to update the main window status bar."""
 
-    communication_state_changed = pyqtSignal(str)
+    communication_state_changed = Signal(str)
     """Signal emitted when communication connectivity state changes."""
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, backend: Optional[CommunicationBackend] = None):
         """Initialize the communication panel and signal bridge."""
         super().__init__(parent)
         self._ldf: Optional[LDFFile] = None
-        self._master = LINMaster(
+        self._selection: Optional[CommunicationSelection] = None
+        self._backend: CommunicationBackend = backend or VectorBackendAdapter(
             on_frame_received=self._on_frame_received,
             on_error=self._on_error,
+            on_frame_changed=self._on_frame_changed,
         )
         self._bridge = _Bridge()
         self._bridge.frame_received.connect(self._monitor_add_frame)
@@ -159,11 +290,21 @@ class CommunicationPanel(QWidget):
 
         self._build_ui()
         self._refresh_channels()
-        self.setFocusPolicy(Qt.StrongFocus)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
     # ------------------------------------------------------------------
     # UI construction
     # ------------------------------------------------------------------
+
+    @property
+    def _master(self):
+        """Compatibility alias for tests still referencing ``_master``."""
+        return self._backend
+
+    @_master.setter
+    def _master(self, backend):
+        """Compatibility alias setter mapping legacy ``_master`` to backend."""
+        self._backend = backend
 
     def _build_ui(self) -> None:
         """Create the vertical layout containing controls and frame monitor."""
@@ -171,7 +312,7 @@ class CommunicationPanel(QWidget):
         root.setContentsMargins(8, 8, 8, 8)
         root.setSpacing(8)
 
-        splitter = QSplitter(Qt.Vertical)
+        splitter = QSplitter(Qt.Orientation.Vertical)
 
         # Top half: controls
         controls = QWidget()
@@ -181,6 +322,7 @@ class CommunicationPanel(QWidget):
         controls_layout.addWidget(self._build_connection_group())
         controls_layout.addWidget(self._build_tx_group())
         controls_layout.addWidget(self._build_schedule_group())
+        controls_layout.addWidget(self._build_monitor_options_group())
         controls_layout.addStretch()
 
         # Bottom half: monitor
@@ -292,6 +434,28 @@ class CommunicationPanel(QWidget):
         layout.addStretch()
         return box
 
+    def _build_monitor_options_group(self) -> QGroupBox:
+        """Create options controlling which received frames are shown."""
+        box = QGroupBox("Monitor Options")
+        layout = QHBoxLayout(box)
+
+        self._changed_only_chk = QCheckBox("Show only changed frames")
+        self._changed_only_chk.setAccessibleName("Show only changed received frames")
+        self._changed_only_chk.setToolTip(
+            "When enabled, only frames whose payload changed are shown in the monitor."
+        )
+        self._changed_only_chk.toggled.connect(self._on_monitor_filter_toggled)
+        layout.addWidget(self._changed_only_chk)
+        layout.addStretch()
+        return box
+
+    def _on_monitor_filter_toggled(self, checked: bool) -> None:
+        """Announce monitor filtering mode changes for accessibility and clarity."""
+        if checked:
+            self.status_message.emit("Monitor filter enabled: showing only changed frames.")
+        else:
+            self.status_message.emit("Monitor filter disabled: showing all received frames.")
+
     # ------------------------------------------------------------------
     # LDF propagation
     # ------------------------------------------------------------------
@@ -299,6 +463,7 @@ class CommunicationPanel(QWidget):
     def load_ldf(self, ldf: LDFFile) -> None:
         """Update the panel whenever a new LDF file is loaded."""
         self._ldf = ldf
+        self._selection = None
 
         # Frame combo
         self._frame_combo.clear()
@@ -314,12 +479,16 @@ class CommunicationPanel(QWidget):
             self._sched_combo.addItem(sched.name, userData=sched)
 
         self._sched_start_btn.setEnabled(
-            self._master.is_connected and self._sched_combo.count() > 0
+            self._backend.is_connected and self._sched_combo.count() > 0
         )
+
+    def configure_selection(self, master: str, slaves: list[str]) -> None:
+        """Store selected master and slave nodes used to gate communication start."""
+        self._selection = CommunicationSelection(master=master, slaves=tuple(slaves))
 
     def focus_primary_control(self) -> None:
         """Move focus to the first interactive control in this panel."""
-        self._channel_combo.setFocus(Qt.ShortcutFocusReason)
+        self._channel_combo.setFocus(Qt.FocusReason.ShortcutFocusReason)
 
     # ------------------------------------------------------------------
     # Channel management
@@ -328,7 +497,9 @@ class CommunicationPanel(QWidget):
     def _refresh_channels(self) -> None:
         """Refresh the list of available Vector hardware channels."""
         self._channel_combo.clear()
-        channels = LINMaster.list_lin_channels()
+        channels = self._backend.list_lin_channels()
+        if not isinstance(channels, list):
+            channels = LINMaster.list_lin_channels()
         if channels:
             for ch in channels:
                 self._channel_combo.addItem(
@@ -340,7 +511,7 @@ class CommunicationPanel(QWidget):
 
     def _toggle_connection(self) -> None:
         """Connect or disconnect depending on the current hardware state."""
-        if self._master.is_connected:
+        if self._backend.is_connected:
             self._disconnect()
         else:
             self._connect()
@@ -353,7 +524,16 @@ class CommunicationPanel(QWidget):
             self.communication_state_changed.emit("No hardware")
             return
         try:
-            self._master.connect(
+            if self._ldf is not None and self._selection is None:
+                self.status_message.emit("Select one master and at least one slave first.")
+                self.communication_state_changed.emit("Disconnected")
+                return
+            ok, reason = self._backend.preflight()
+            if not ok:
+                self.status_message.emit(f"Driver preflight failed: {reason}")
+                self.communication_state_changed.emit("Error")
+                return
+            self._backend.connect(
                 channel_mask=mask,
                 ldf=self._ldf,
             )
@@ -366,6 +546,10 @@ class CommunicationPanel(QWidget):
             self._sched_start_btn.setEnabled(self._sched_combo.count() > 0)
             self.status_message.emit("Connected to LIN hardware.")
             self.communication_state_changed.emit("Connected")
+            dll_path = getattr(self._backend, 'dll_path', None)
+            if isinstance(dll_path, str):
+                source = "bundled" if "third_party" in dll_path.replace("\\", "/") else "system"
+                self.status_message.emit(f"Runtime: {dll_path} ({source})")
         except Exception as exc:
             self.status_message.emit(f"Connection failed: {exc}")
             self.communication_state_changed.emit("Error")
@@ -374,7 +558,7 @@ class CommunicationPanel(QWidget):
     def _disconnect(self) -> None:
         """Disconnect the active hardware channel and reset the UI."""
         try:
-            self._master.disconnect()
+            self._backend.disconnect()
         except Exception as exc:
             log.warning("Disconnect error: %s", exc)
         self._status_led.setStyleSheet("color: red; font-size: 18px;")
@@ -412,7 +596,7 @@ class CommunicationPanel(QWidget):
                 )
                 return
             try:
-                self._master.send_frame_data(frame.frame_id, data)
+                self._backend.send_frame_data(frame.frame_id, data)
                 self.status_message.emit(
                     f"Sent master response for 0x{frame.frame_id:02X} ({frame.name})."
                 )
@@ -420,7 +604,7 @@ class CommunicationPanel(QWidget):
                 self.status_message.emit(f"TX error: {exc}")
         else:
             try:
-                self._master.send_frame(frame.frame_id)
+                self._backend.send_frame(frame.frame_id)
                 self.status_message.emit(
                     f"Sent master request for 0x{frame.frame_id:02X} ({frame.name})."
                 )
@@ -437,7 +621,7 @@ class CommunicationPanel(QWidget):
         if sched is None:
             return
         try:
-            self._master.run_schedule(sched)
+            self._backend.run_schedule(sched)
             self._sched_start_btn.setEnabled(False)
             self._sched_stop_btn.setEnabled(True)
             self.status_message.emit(f"Running schedule '{sched.name}'.")
@@ -446,7 +630,7 @@ class CommunicationPanel(QWidget):
 
     def _stop_schedule(self) -> None:
         """Stop the currently running schedule table."""
-        self._master.stop_schedule()
+        self._backend.stop_schedule()
         self._sched_start_btn.setEnabled(True)
         self._sched_stop_btn.setEnabled(False)
         self.status_message.emit("Schedule stopped.")
@@ -457,20 +641,37 @@ class CommunicationPanel(QWidget):
 
     def _on_frame_received(self, frame: ReceivedFrame) -> None:
         """Bridge a received frame from the worker thread to the GUI thread."""
+        if self._changed_only_chk.isChecked():
+            return
         self._bridge.frame_received.emit(frame)
 
     def _on_error(self, msg: str) -> None:
         """Bridge a hardware error from the worker thread to the GUI thread."""
         self._bridge.error_occurred.emit(msg)
 
-    @pyqtSlot(object)
+    def _on_frame_changed(self, frame: ReceivedFrame, _previous_data: Optional[bytes]) -> None:
+        """Bridge only changed-payload frames when change-filter mode is active."""
+        if not self._changed_only_chk.isChecked():
+            return
+        self._bridge.frame_received.emit(frame)
+
+    @Slot(object)
     def _monitor_add_frame(self, frame: ReceivedFrame) -> None:
         """Append a received frame to the live monitor widget."""
         self._monitor.add_frame(frame)
 
-    @pyqtSlot(str)
+    @Slot(str)
     def _show_error(self, msg: str) -> None:
         """Forward a hardware error message to the main window status bar."""
         self.status_message.emit(f"Hardware error: {msg}")
         self.communication_state_changed.emit("Error")
+
+
+# ---------------------------------------------------------------------------
+# Default backend registration
+# ---------------------------------------------------------------------------
+
+from src.communication import backend_registry as _backend_registry  # noqa: E402
+
+_backend_registry.register("vector", VectorBackendAdapter)
 

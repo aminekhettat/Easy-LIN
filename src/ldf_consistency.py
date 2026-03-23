@@ -6,7 +6,7 @@ while tolerating vendor-specific formatting accepted by the parser.
 :author: Amine Khettat
 :company: BLIND SYSTEMS
 :website: https://www.blindsystems.org
-:version: 0.5.2
+:version: 0.6.0
 :copyright: Copyright (c) 2026 Amine Khettat
 :license: Easy-LIN Source-Available License Version 1.0. See LICENSE.
 :disclaimer: Provided "AS IS", without warranties or liability, as described

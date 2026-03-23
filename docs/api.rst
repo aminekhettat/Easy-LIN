@@ -34,23 +34,8 @@ Communication Modules
 .. automodule:: src.vector_xl_api
    :members:
 
-Tk Frontend
------------
-
-.. automodule:: src.gui.main_window
-   :members:
-
-.. automodule:: src.gui.ldf_tree
-   :members:
-
-.. automodule:: src.gui.signal_viewer
-   :members:
-
-.. automodule:: src.gui.comm_panel
-   :members:
-
-Preserved PyQt Frontend
------------------------
+PySide6 Frontend
+----------------
 
 .. automodule:: src.gui.main_window_qt
    :members:
@@ -58,7 +43,13 @@ Preserved PyQt Frontend
 .. automodule:: src.gui.ldf_viewer
    :members:
 
+.. automodule:: src.gui.communication_window
+   :members:
+
 .. automodule:: src.gui.communication_panel
+   :members:
+
+.. automodule:: src.gui.rgaa_auto
    :members:
 
 Support Tools

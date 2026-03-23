@@ -1,11 +1,5 @@
 [run]
 source = src
-omit =
-    src/ldf/*
-    src/gui/*
-    src/vector_xl_api.py
-    src/lin_master.py
-    src/main_qt.py
 
 [report]
 fail_under = 100

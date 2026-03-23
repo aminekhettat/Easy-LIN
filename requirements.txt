@@ -1,7 +1,6 @@
 # Core dependencies
 python-can>=4.0.0
-PyQt5>=5.15.0
-PyQt5-sip>=12.8.0
+PySide6>=6.7.0
 
 # Testing
 pytest>=7.0

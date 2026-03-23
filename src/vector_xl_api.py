@@ -8,7 +8,7 @@ simulation or demo mode.
 :author: Amine Khettat
 :company: BLIND SYSTEMS
 :website: https://www.blindsystems.org
-:version: 0.5.2
+:version: 0.6.0
 :copyright: Copyright (c) 2026 Amine Khettat
 :license: Easy-LIN Source-Available License Version 1.0. See LICENSE.
 :disclaimer: Provided "AS IS", without warranties or liability, as described
@@ -17,9 +17,11 @@ simulation or demo mode.
 
 import ctypes
 import ctypes.util
+import ctypes.wintypes
 import logging
 import platform
-from ctypes import c_int, c_uint, c_ubyte, c_char, c_char_p, POINTER
+from pathlib import Path
+from ctypes import c_int, c_uint, c_ubyte, c_char, c_char_p, c_ulonglong, POINTER
 from typing import List, Optional, Tuple
 
 log = logging.getLogger(__name__)
@@ -36,12 +38,28 @@ XL_ERR_QUEUE_IS_EMPTY = 10
 XL_ERR_NO_LICENSE = 135
 XL_HARDWARE_NOT_PRESENT = 129
 
+# Common XL error codes used by higher-level modules
+XL_ERR_INVALID_ACCESS = 112
+XL_ERR_PORT_IS_OFFLINE = 117
+XL_ERR_INVALID_PORT = 118
+XL_ERR_WRONG_PARAMETER = 101
+
 # Bus types
 XL_BUS_TYPE_LIN = 0x00000200
+
+# Hardware types (selected)
+XL_HWTYPE_VIRTUAL = 1
+XL_HWTYPE_CANCASEXL = 21
+XL_HWTYPE_VN1600 = 55
+XL_HWTYPE_VN1610 = 57
 
 # LIN mode
 XL_LIN_MASTER = 1
 XL_LIN_SLAVE = 2
+
+# Checksum modes
+XL_LIN_CHECKSUM_CLASSIC = 0
+XL_LIN_CHECKSUM_ENHANCED = 1
 
 # LIN protocol versions
 XL_LIN_VERSION_1_3 = 0x13
@@ -50,6 +68,7 @@ XL_LIN_VERSION_2_1 = 0x21
 
 # XL interface versions
 XL_INTERFACE_VERSION = 3
+XL_INTERFACE_VERSION_V3 = 3
 XL_INTERFACE_VERSION_V4 = 4
 
 # Channel capabilities
@@ -63,6 +82,7 @@ XL_ACTIVATE_RESET_CLOCK = 8
 # ---------------------------------------------------------------------------
 
 XL_MAX_APPNAME = 32
+XL_MAX_LENGTH = 8
 XL_CONFIG_MAX_CHANNELS = 64
 
 
@@ -177,7 +197,7 @@ class VectorXLError(RuntimeError):
         self.status = status
 
 
-class VectorXLApi:
+class VectorXLApi:  # pylint: disable=too-many-public-methods
     """
     Thin ctypes wrapper around vxlapi.dll / vxlapi64.dll.
 
@@ -200,7 +220,13 @@ class VectorXLApi:
     def __init__(self) -> None:
         """Load the Vector XL DLL and configure ctypes prototypes."""
         self._dll = self._load_dll()
+        self._dll_path: Optional[str] = getattr(self._dll, '_name', None)
         self._setup_prototypes()
+
+    @property
+    def dll_path(self) -> Optional[str]:
+        """Return the filesystem path from which the DLL was loaded."""
+        return self._dll_path
 
     # ------------------------------------------------------------------
     # DLL loading
@@ -211,14 +237,26 @@ class VectorXLApi:
         """Load the Vector XL DLL from the current Windows installation."""
         if platform.system() != "Windows":
             raise VectorXLDriverNotFoundError("Vector XL Driver is only available on Windows.")
+
+        local_bin = Path(__file__).resolve().parent.parent / "third_party" / "vector" / "bin"
+        local_bases = [str(local_bin)] if local_bin.is_dir() else []
+
         # Try 64-bit first, then 32-bit
         for name in ("vxlapi64", "vxlapi"):
+            # Prefer vendored runtime shipped with this repository.
+            for base in local_bases:
+                candidate = str(Path(base) / f"{name}.dll")
+                try:
+                    return ctypes.WinDLL(candidate)
+                except OSError:
+                    continue
+
             path = ctypes.util.find_library(name)
             if path:
                 try:
                     return ctypes.WinDLL(path)
                 except OSError:
-                    continue
+                    pass  # fall through to standard installation paths
             # Also try standard installation paths
             for base in (
                 r"C:\Users\Public\Documents\Vector\XL Driver Library\bin",
@@ -276,7 +314,12 @@ class VectorXLApi:
         _proto("xlLinSendRequest", c_int, c_int, ctypes.c_ulonglong, c_ubyte, c_uint)
         _proto("xlReceive", c_int, c_int, POINTER(c_uint), POINTER(XL_EVENT))
         _proto("xlSetNotification", c_int, c_int, POINTER(ctypes.c_void_p), c_int)
+        _proto("xlSetTimerRate", c_int, c_int, c_ulonglong)
         _proto("xlGetErrorString", c_char_p, c_int)
+
+        # Optional export on some XL driver versions.
+        if hasattr(dll, "xlLinSetChecksum"):
+            _proto("xlLinSetChecksum", c_int, c_int, ctypes.c_ulonglong, c_ubyte * 64)
 
     # ------------------------------------------------------------------
     # Driver lifecycle
@@ -292,6 +335,22 @@ class VectorXLApi:
         """Close the Vector XL driver library."""
         self._dll.xlCloseDriver()
 
+    def preflight(self) -> tuple[bool, str]:
+        """Verify the DLL is functional by executing a harmless open/close cycle.
+
+        Returns:
+            ``(True, 'OK')`` when ``xlOpenDriver`` succeeds.
+            ``(False, <reason>)`` when the call fails or raises.
+        """
+        try:
+            self.open_driver()
+            self.close_driver()
+            return True, "OK"
+        except VectorXLError as exc:
+            return False, f"xlOpenDriver returned 0x{exc.status:02X}"
+        except Exception as exc:  # noqa: BLE001
+            return False, str(exc)
+
     def get_driver_config(self) -> XL_DRIVER_CONFIG:
         """Return the current Vector driver configuration structure."""
         cfg = XL_DRIVER_CONFIG()
@@ -299,6 +358,30 @@ class VectorXLApi:
         if status != XL_SUCCESS:
             raise VectorXLError("xlGetDriverConfig", status)
         return cfg
+
+    def get_channel_mask(self, hw_type: int, hw_index: int, hw_channel: int) -> int:
+        """Resolve a Vector channel mask from hardware identity.
+
+        Args:
+            hw_type: Hardware type constant (for example ``XL_HWTYPE_VN1610``).
+            hw_index: Device index reported by the driver.
+            hw_channel: Channel index on the hardware device.
+
+        Returns:
+            Channel mask for the matching channel.
+
+        Raises:
+            VectorXLError: If no matching channel exists in current driver config.
+
+        Example:
+            ``mask = api.get_channel_mask(XL_HWTYPE_VN1610, 0, 0)``
+        """
+        cfg = self.get_driver_config()
+        for i in range(cfg.channelCount):
+            ch = cfg.channel[i]
+            if ch.hwType == hw_type and ch.hwIndex == hw_index and ch.hwChannel == hw_channel:
+                return int(ch.channelMask)
+        raise VectorXLError("get_channel_mask", XL_ERR_WRONG_PARAMETER)
 
     def lin_channels(self, cfg: Optional[XL_DRIVER_CONFIG] = None) -> List[XL_CHANNEL_CONFIG]:
         """Return all channels that have LIN capability."""
@@ -430,6 +513,23 @@ class VectorXLApi:
         """Deactivate a previously activated channel."""
         self._dll.xlDeactivateChannel(port_handle, ctypes.c_ulonglong(access_mask))
 
+    def set_timer_rate(self, port_handle: int, timer_rate: int) -> None:
+        """Set event polling timer period for one opened port.
+
+        Args:
+            port_handle: Opened XL port handle.
+            timer_rate: Timer rate in 10 us units.
+
+        Raises:
+            VectorXLError: If ``xlSetTimerRate`` fails.
+
+        Example:
+            ``api.set_timer_rate(port, 1000)``
+        """
+        status = self._dll.xlSetTimerRate(port_handle, c_ulonglong(timer_rate))
+        if status != XL_SUCCESS:
+            raise VectorXLError("xlSetTimerRate", status)
+
     # ------------------------------------------------------------------
     # LIN master TX
     # ------------------------------------------------------------------
@@ -454,6 +554,91 @@ class VectorXLApi:
         if status != XL_SUCCESS:
             raise VectorXLError("xlLinSendRequest", status)
 
+    def lin_send_response(
+        self,
+        port_handle: int,
+        access_mask: int,
+        frame_id: int,
+        dlc: int,
+        data: List[int],
+    ) -> None:
+        """Send a master-published LIN response frame.
+
+        Args:
+            port_handle: Opened XL port handle.
+            access_mask: Channel access mask.
+            frame_id: LIN frame identifier in range 0..63.
+            dlc: Number of payload bytes (0..8).
+            data: Payload bytes, each in range 0..255.
+
+        Raises:
+            VectorXLError: If ID/DLC is invalid or underlying XL calls fail.
+
+        Example:
+            ``api.lin_send_response(port, mask, 0x12, 2, [0x11, 0x22])``
+        """
+        if frame_id < 0 or frame_id > 0x3F:
+            raise VectorXLError("lin_send_response", XL_ERR_WRONG_PARAMETER)
+        if dlc < 0 or dlc > XL_MAX_LENGTH:
+            raise VectorXLError("lin_send_response", XL_ERR_WRONG_PARAMETER)
+        payload = list(data[:dlc])
+        if len(payload) < dlc:
+            payload.extend([0] * (dlc - len(payload)))
+        self.set_lin_frame_response(port_handle, access_mask, frame_id, payload)
+        self.lin_send_request(port_handle, access_mask, frame_id)
+
+    def lin_set_checksum_info(
+        self,
+        port_handle: int,
+        access_mask: int,
+        checksum_table: List[int],
+    ) -> None:
+        """Set checksum strategy table for all LIN frame IDs.
+
+        Args:
+            port_handle: Opened XL port handle.
+            access_mask: Channel access mask.
+            checksum_table: 64 entries (classic/enhanced).
+
+        Raises:
+            VectorXLError: If driver reports failure.
+
+        Example:
+            ``api.lin_set_checksum_info(port, mask, [XL_LIN_CHECKSUM_ENHANCED] * 64)``
+        """
+        if hasattr(self._dll, "xlLinSetChecksum"):
+            arr = (c_ubyte * 64)(*([0] * 64))
+            for i, v in enumerate(checksum_table[:64]):
+                arr[i] = int(v)
+            status = self._dll.xlLinSetChecksum(
+                port_handle,
+                ctypes.c_ulonglong(access_mask),
+                arr,
+            )
+            if status != XL_SUCCESS:
+                raise VectorXLError("xlLinSetChecksum", status)
+
+    def set_notification(self, port_handle: int) -> ctypes.wintypes.HANDLE:
+        """Create and return a Windows notification handle for an XL port.
+
+        Args:
+            port_handle: Opened XL port handle.
+
+        Returns:
+            Notification handle compatible with Win32 wait APIs.
+
+        Raises:
+            VectorXLError: If ``xlSetNotification`` fails.
+
+        Example:
+            ``handle = api.set_notification(port)``
+        """
+        notify = ctypes.c_void_p()
+        status = self._dll.xlSetNotification(port_handle, ctypes.byref(notify), 1)
+        if status != XL_SUCCESS:
+            raise VectorXLError("xlSetNotification", status)
+        return ctypes.wintypes.HANDLE(notify.value)
+
     # ------------------------------------------------------------------
     # RX
     # ------------------------------------------------------------------
@@ -473,6 +658,27 @@ class VectorXLApi:
             raise VectorXLError("xlReceive", status)
         return evt
 
+    def receive_event(self, port_handle: int) -> Optional[XL_EVENT]:
+        """Compatibility alias for :meth:`receive`."""
+        return self.receive(port_handle)
+
+    def flush_receive_queue(self, port_handle: int) -> None:
+        """Drain all pending receive events for one XL port.
+
+        Args:
+            port_handle: Opened XL port handle.
+
+        Raises:
+            VectorXLError: If one receive call fails with a non-empty-queue error.
+
+        Example:
+            ``api.flush_receive_queue(port)``
+        """
+        while True:
+            evt = self.receive(port_handle)
+            if evt is None:
+                break
+
     # ------------------------------------------------------------------
     # Utility
     # ------------------------------------------------------------------
@@ -481,4 +687,8 @@ class VectorXLApi:
         """Return the Vector driver error string for a status code."""
         raw = self._dll.xlGetErrorString(status)
         return raw.decode("ascii", errors="replace") if raw else f"status={status:#x}"
+
+    def get_error_string(self, status: int) -> str:
+        """Compatibility alias for :meth:`error_string`."""
+        return self.error_string(status)
 
