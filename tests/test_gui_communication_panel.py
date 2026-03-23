@@ -9,6 +9,7 @@ Covers:
   master response, invalid hex, no frame), _run_schedule (success/failure/no sched),
   _stop_schedule, _on_frame_received, _on_error, _monitor_add_frame, _show_error
 - Signal emissions: status_message, communication_state_changed
+- Cross-platform LDF path normalisation (Windows backslash paths on Linux CI runners)
 """
 
 from __future__ import annotations
