@@ -77,11 +77,11 @@ def _make_seams(argv=None, *, acquired=True, exec_return=0):
     fake_app._exec_return = exec_return
     fake_window = _FakeWindow()
     lock = _FakeLock(acquired=acquired)
-    kwargs = dict(
-        _app_factory=lambda a: fake_app,
-        _lock_factory=lambda _p: lock,
-        _window_factory=lambda: fake_window,
-    )
+    kwargs = {
+        "_app_factory": lambda a: fake_app,
+        "_lock_factory": lambda _p: lock,
+        "_window_factory": lambda: fake_window,
+    }
     return fake_app, fake_window, lock, kwargs
 
 

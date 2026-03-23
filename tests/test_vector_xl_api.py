@@ -9,6 +9,8 @@ the Vector XL Driver DLL installed.
 :license: Easy-LIN Source-Available License Version 1.0. See LICENSE.
 """
 
+# pylint: disable=too-many-lines
+
 from unittest.mock import MagicMock, patch
 
 import pytest

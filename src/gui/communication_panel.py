@@ -372,7 +372,7 @@ class _FrameMonitor(QWidget):
 
     def _start_csv_logging(self, path: str) -> None:
         """Open a CSV file and start appending newly received frames."""
-        file_handle = open(path, "w", newline="", encoding="utf-8")
+        file_handle = open(path, "w", newline="", encoding="utf-8")  # pylint: disable=consider-using-with
         writer = csv.writer(file_handle)
         self._write_csv_preamble(writer)
         self._logging_path = path

@@ -23,7 +23,6 @@ from src.communication.hardware_discovery import LINChannel
 from src.vector_xl_api import (
     LINMessageEvent,
     VectorXLApi,
-    XL_LIN_CALC_CHECKSUM,
     XL_LIN_CALC_CHECKSUM_ENHANCED,
     XL_LIN_CHECKSUM_CLASSIC,
     XL_LIN_CHECKSUM_ENHANCED,
