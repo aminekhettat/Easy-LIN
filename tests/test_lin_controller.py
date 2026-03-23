@@ -61,6 +61,36 @@ class TestLINController:  # pylint: disable=too-many-public-methods
         with pytest.raises(LINError):
             c.connect(_channel(), 19200, LINMode.MASTER)
 
+    def test_connect_invalid_baudrate_raises(self):
+        c = LINController(api=MagicMock())
+        with pytest.raises(LINError):
+            c.connect(_channel(), 100, LINMode.MASTER)
+
+    def test_connect_without_init_access_raises_and_cleans_up(self):
+        api = MagicMock()
+        api.open_port.return_value = (10, 0)
+        api.get_channel_mask.return_value = 1
+
+        c = LINController(api=api)
+        with pytest.raises(LINError):
+            c.connect(_channel(), 19200, LINMode.MASTER)
+
+        api.close_port.assert_called_once_with(10)
+        api.close_driver.assert_called()
+
+    def test_connect_sets_notification_before_activate(self):
+        api = MagicMock()
+        api.open_port.return_value = (10, 1)
+        api.get_channel_mask.return_value = 1
+
+        c = LINController(api=api)
+        c.connect(_channel(), 19200, LINMode.MASTER)
+
+        assert api.set_notification.called
+        set_idx = next(i for i, call in enumerate(api.method_calls) if call[0] == "set_notification")
+        act_idx = next(i for i, call in enumerate(api.method_calls) if call[0] == "activate_channel")
+        assert set_idx < act_idx
+
     def test_connect_when_already_connected_raises(self):
         api = MagicMock()
         api.open_port.return_value = (10, 1)

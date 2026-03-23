@@ -99,14 +99,24 @@ class LINController:
         """
         if self._connected:
             raise LINError("Controller already connected")
+        if baudrate < 200 or baudrate > 300000:
+            raise LINError("baudrate must be in range 200..300000")
+
+        port_handle: Optional[int] = None
+        access_mask: Optional[int] = None
+        activated = False
+        opened_driver = False
         try:
             self._api.open_driver()
+            opened_driver = True
             access_mask = self._api.get_channel_mask(
                 channel.hw_type,
                 channel.hw_index,
                 channel.hw_channel,
             )
-            port_handle, _perm = self._api.open_port("Easy-LIN", access_mask)
+            port_handle, perm_mask = self._api.open_port("Easy-LIN", access_mask)
+            if (perm_mask & access_mask) != access_mask:
+                raise LINError("No init access granted for the selected LIN channel")
             self._api.set_timer_rate(port_handle, 1000)
             self._api.set_lin_channel_params(
                 port_handle,
@@ -117,10 +127,23 @@ class LINController:
             if mode == LINMode.MASTER:
                 self._api.set_lin_dlc(port_handle, access_mask, [8] * 64)
             self._api.lin_set_checksum_info(port_handle, access_mask, self._checksum_table)
+            self._api.set_notification(port_handle)
             self._api.activate_channel(port_handle, access_mask)
+            activated = True
         except Exception as exc:  # pragma: no cover - wrapped and validated by tests
             try:
-                self._api.close_driver()
+                if activated and port_handle is not None and access_mask is not None:
+                    self._api.deactivate_channel(port_handle, access_mask)
+            except Exception:
+                pass
+            try:
+                if port_handle is not None:
+                    self._api.close_port(port_handle)
+            except Exception:
+                pass
+            try:
+                if opened_driver:
+                    self._api.close_driver()
             except Exception:
                 pass
             raise LINError(f"Unable to connect LIN controller: {exc}") from exc
