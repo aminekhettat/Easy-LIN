@@ -60,7 +60,17 @@ class HardwareDiscovery:
         cfg = self._api.get_driver_config()
         channels = self._api.lin_channels(cfg)
         by_device: Dict[tuple[int, int], List[LINChannel]] = {}
+        seen_keys: set[tuple[int, int, int, int]] = set()
         for ch in channels:
+            key = (
+                int(ch.hwType),
+                int(ch.hwIndex),
+                int(ch.hwChannel),
+                int(ch.channelIndex),
+            )
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
             serial = f"{int(ch.hwType):03d}-{int(ch.hwIndex):03d}"
             lin_channel = LINChannel(
                 name=ch.name.decode("ascii", errors="replace").strip("\x00"),
@@ -83,7 +93,7 @@ class HardwareDiscovery:
                     hw_type=hw_type,
                     hw_index=hw_index,
                     device_serial=serial,
-                    channels=sorted(dev_channels, key=lambda c: c.hw_channel),
+                    channels=sorted(dev_channels, key=lambda c: (c.hw_channel, c.channel_index)),
                 )
             )
         return sorted(devices, key=lambda d: (d.hw_type, d.hw_index))
@@ -117,6 +127,31 @@ class HardwareDiscovery:
             ):
                 return channel
         raise LookupError("LIN channel not found")
+
+    def get_channel_by_index(self, channel_index: int) -> LINChannel:
+        """Return one channel by global Vector channel index."""
+        for channel in self.get_lin_channels():
+            if channel.channel_index == channel_index:
+                return channel
+        raise LookupError("LIN channel index not found")
+
+    def get_channel_by_mask(self, channel_mask: int) -> LINChannel:
+        """Return one channel by global Vector channel mask."""
+        for channel in self.get_lin_channels():
+            if channel.channel_mask == channel_mask:
+                return channel
+        raise LookupError("LIN channel mask not found")
+
+    def get_channels_for_device(self, hw_type: int, hw_index: int) -> List[LINChannel]:
+        """Return all channels for one device identity."""
+        channels = [
+            channel
+            for channel in self.get_lin_channels()
+            if channel.hw_type == hw_type and channel.hw_index == hw_index
+        ]
+        if not channels:
+            raise LookupError("LIN device not found")
+        return channels
 
     def is_device_available(self, device_serial: str) -> bool:
         """Check whether a device is visible in current driver configuration."""
