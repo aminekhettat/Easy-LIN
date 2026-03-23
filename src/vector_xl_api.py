@@ -56,6 +56,8 @@ XL_HWTYPE_VN1610 = 57
 # LIN mode
 XL_LIN_MASTER = 1
 XL_LIN_SLAVE = 2
+XL_LIN_SLAVE_OFF = 0
+XL_LIN_SLAVE_ON = 1
 
 # Checksum modes
 XL_LIN_CHECKSUM_CLASSIC = 0
@@ -304,6 +306,24 @@ class VectorXLApi:  # pylint: disable=too-many-public-methods
         _proto("xlLinSetChannelParams", c_int, c_int, ctypes.c_ulonglong, XL_LIN_STAT_PARAM)
         _proto("xlLinSetDLC", c_int, c_int, ctypes.c_ulonglong, c_ubyte * 64)
         _proto(
+            "xlLinSetSlave",
+            c_int,
+            c_int,
+            ctypes.c_ulonglong,
+            c_ubyte,
+            c_ubyte * 8,
+            c_ubyte,
+            ctypes.c_ushort,
+        )
+        _proto(
+            "xlLinSwitchSlave",
+            c_int,
+            c_int,
+            ctypes.c_ulonglong,
+            c_ubyte,
+            c_uint,
+        )
+        _proto(
             "xlLinSetFrameResponse",
             c_int,
             c_int,
@@ -312,6 +332,8 @@ class VectorXLApi:  # pylint: disable=too-many-public-methods
             c_uint,
         )
         _proto("xlLinSendRequest", c_int, c_int, ctypes.c_ulonglong, c_ubyte, c_uint)
+        _proto("xlLinWakeUp", c_int, c_int, ctypes.c_ulonglong)
+        _proto("xlLinSetSleepMode", c_int, c_int, ctypes.c_ulonglong, c_uint, c_ubyte)
         _proto("xlReceive", c_int, c_int, POINTER(c_uint), POINTER(XL_EVENT))
         _proto("xlSetNotification", c_int, c_int, POINTER(ctypes.c_void_p), c_int)
         _proto("xlSetTimerRate", c_int, c_int, c_ulonglong)
@@ -493,6 +515,75 @@ class VectorXLApi:  # pylint: disable=too-many-public-methods
         )
         if status != XL_SUCCESS:
             raise VectorXLError("xlLinSetFrameResponse", status)
+
+    def lin_set_slave(
+        self,
+        port_handle: int,
+        access_mask: int,
+        lin_id: int,
+        data: List[int],
+        dlc: int,
+        checksum: int,
+    ) -> None:
+        """Configure one LIN slave response entry for a specific LIN identifier.
+
+        This call can be used on a dedicated slave channel and also to set up
+        slave tasks on a master channel.
+        """
+        payload = [0] * 8
+        for i, value in enumerate(data[:8]):
+            payload[i] = int(value) & 0xFF
+        arr = (c_ubyte * 8)(*payload)
+        status = self._dll.xlLinSetSlave(
+            port_handle,
+            ctypes.c_ulonglong(access_mask),
+            c_ubyte(lin_id & 0x3F),
+            arr,
+            c_ubyte(dlc & 0xFF),
+            ctypes.c_ushort(checksum & 0xFFFF),
+        )
+        if status != XL_SUCCESS:
+            raise VectorXLError("xlLinSetSlave", status)
+
+    def lin_switch_slave(
+        self,
+        port_handle: int,
+        access_mask: int,
+        lin_id: int,
+        mode: int,
+    ) -> None:
+        """Enable or disable one configured LIN slave during active measurement."""
+        status = self._dll.xlLinSwitchSlave(
+            port_handle,
+            ctypes.c_ulonglong(access_mask),
+            c_ubyte(lin_id & 0x3F),
+            c_uint(mode),
+        )
+        if status != XL_SUCCESS:
+            raise VectorXLError("xlLinSwitchSlave", status)
+
+    def lin_wakeup(self, port_handle: int, access_mask: int) -> None:
+        """Transmit a LIN wake-up request on the selected channel."""
+        status = self._dll.xlLinWakeUp(port_handle, ctypes.c_ulonglong(access_mask))
+        if status != XL_SUCCESS:
+            raise VectorXLError("xlLinWakeUp", status)
+
+    def lin_set_sleep_mode(
+        self,
+        port_handle: int,
+        access_mask: int,
+        flags: int,
+        lin_id: int = 0,
+    ) -> None:
+        """Put the LIN channel into sleep mode, optionally configuring wake-up ID."""
+        status = self._dll.xlLinSetSleepMode(
+            port_handle,
+            ctypes.c_ulonglong(access_mask),
+            c_uint(flags),
+            c_ubyte(lin_id & 0x3F),
+        )
+        if status != XL_SUCCESS:
+            raise VectorXLError("xlLinSetSleepMode", status)
 
     # ------------------------------------------------------------------
     # Bus activation

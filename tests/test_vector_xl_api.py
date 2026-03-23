@@ -53,8 +53,12 @@ class FakeDLL:
         self.xlDeactivateChannel = MagicMock(return_value=0)
         self.xlLinSetChannelParams = MagicMock(return_value=0)
         self.xlLinSetDLC = MagicMock(return_value=0)
+        self.xlLinSetSlave = MagicMock(return_value=0)
+        self.xlLinSwitchSlave = MagicMock(return_value=0)
         self.xlLinSetFrameResponse = MagicMock(return_value=0)
         self.xlLinSendRequest = MagicMock(return_value=0)
+        self.xlLinWakeUp = MagicMock(return_value=0)
+        self.xlLinSetSleepMode = MagicMock(return_value=0)
         self.xlReceive = MagicMock(return_value=0)
         self.xlSetNotification = MagicMock(return_value=0)
         self.xlSetTimerRate = MagicMock(return_value=0)
@@ -95,6 +99,8 @@ from vector_xl_api import (  # noqa: E402
     XL_LIN_MASTER,
     XL_LIN_CHECKSUM_CLASSIC,
     XL_LIN_CHECKSUM_ENHANCED,
+    XL_LIN_SLAVE_OFF,
+    XL_LIN_SLAVE_ON,
     XL_LIN_MSG,
     XL_LIN_STAT_PARAM,
     XL_LIN_VERSION_2_0,
@@ -136,6 +142,10 @@ class TestConstants:
     def test_checksum_constants(self):
         assert XL_LIN_CHECKSUM_CLASSIC == 0
         assert XL_LIN_CHECKSUM_ENHANCED == 1
+
+    def test_lin_slave_switch_constants(self):
+        assert XL_LIN_SLAVE_OFF == 0
+        assert XL_LIN_SLAVE_ON == 1
 
 
 # ===================================================================
@@ -594,6 +604,62 @@ class TestSetLinFrameResponse:
         api, dll = _make_api()
         api.set_lin_frame_response(1, 0x01, 0x10, list(range(16)))
         dll.xlLinSetFrameResponse.assert_called_once()
+
+
+class TestLinSetSlave:
+    def test_success(self):
+        api, dll = _make_api()
+        api.lin_set_slave(1, 0x01, 0x04, [0x01, 0x02], 2, 0)
+        dll.xlLinSetSlave.assert_called_once()
+
+    def test_failure_raises(self):
+        api, dll = _make_api()
+        dll.xlLinSetSlave.return_value = 0x90
+        with pytest.raises(VectorXLError) as exc_info:
+            api.lin_set_slave(1, 0x01, 0x04, [0x01], 1, 0)
+        assert exc_info.value.func_name == "xlLinSetSlave"
+
+
+class TestLinSwitchSlave:
+    def test_success(self):
+        api, dll = _make_api()
+        api.lin_switch_slave(1, 0x01, 0x04, XL_LIN_SLAVE_ON)
+        dll.xlLinSwitchSlave.assert_called_once()
+
+    def test_failure_raises(self):
+        api, dll = _make_api()
+        dll.xlLinSwitchSlave.return_value = 0x91
+        with pytest.raises(VectorXLError) as exc_info:
+            api.lin_switch_slave(1, 0x01, 0x04, XL_LIN_SLAVE_OFF)
+        assert exc_info.value.func_name == "xlLinSwitchSlave"
+
+
+class TestLinWakeup:
+    def test_success(self):
+        api, dll = _make_api()
+        api.lin_wakeup(1, 0x01)
+        dll.xlLinWakeUp.assert_called_once()
+
+    def test_failure_raises(self):
+        api, dll = _make_api()
+        dll.xlLinWakeUp.return_value = 0x92
+        with pytest.raises(VectorXLError) as exc_info:
+            api.lin_wakeup(1, 0x01)
+        assert exc_info.value.func_name == "xlLinWakeUp"
+
+
+class TestLinSetSleepMode:
+    def test_success(self):
+        api, dll = _make_api()
+        api.lin_set_sleep_mode(1, 0x01, 0, lin_id=0x10)
+        dll.xlLinSetSleepMode.assert_called_once()
+
+    def test_failure_raises(self):
+        api, dll = _make_api()
+        dll.xlLinSetSleepMode.return_value = 0x93
+        with pytest.raises(VectorXLError) as exc_info:
+            api.lin_set_sleep_mode(1, 0x01, 0)
+        assert exc_info.value.func_name == "xlLinSetSleepMode"
 
 
 # ===================================================================

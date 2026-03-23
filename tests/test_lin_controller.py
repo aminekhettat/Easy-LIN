@@ -220,6 +220,20 @@ class TestLINController:  # pylint: disable=too-many-public-methods
 
         assert calls["count"] == 1
 
+    def test_scheduler_loop_slave_response_branch(self):
+        c = LINController(api=MagicMock())
+        calls = {"count": 0}
+
+        def _send_slave_response(_frame_id, _data):
+            calls["count"] += 1
+            c._sched_stop.set()
+
+        c.send_slave_response = _send_slave_response
+        c._sched_stop.clear()
+        c._scheduler_loop([ScheduleEntry(frame_id=0x11, dlc=2, data=[1, 2])], 1)
+
+        assert calls["count"] == 1
+
     def test_scheduler_loop_wait_sleep_branch(self, monkeypatch):
         c = LINController(api=MagicMock())
         c.send_master_request = MagicMock()
@@ -232,6 +246,26 @@ class TestLINController:  # pylint: disable=too-many-public-methods
         c._scheduler_loop([ScheduleEntry(frame_id=0x10, dlc=0, data=[])], 2)
 
         c.send_master_request.assert_called_once_with(0x10)
+
+    def test_scheduler_loop_break_when_stop_is_set_mid_schedule(self):
+        c = LINController(api=MagicMock())
+        calls = {"count": 0}
+
+        def _send_master_request(_frame_id):
+            calls["count"] += 1
+            c._sched_stop.set()
+
+        c.send_master_request = _send_master_request
+        c._sched_stop.clear()
+        c._scheduler_loop(
+            [
+                ScheduleEntry(frame_id=0x10, dlc=0, data=[]),
+                ScheduleEntry(frame_id=0x11, dlc=0, data=[]),
+            ],
+            1,
+        )
+
+        assert calls["count"] == 1
 
     def test_set_checksum_classic(self):
         api = MagicMock()
