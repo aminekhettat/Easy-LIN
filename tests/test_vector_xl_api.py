@@ -99,8 +99,25 @@ from vector_xl_api import (  # noqa: E402
     XL_LIN_MASTER,
     XL_LIN_CHECKSUM_CLASSIC,
     XL_LIN_CHECKSUM_ENHANCED,
+    XL_LIN_CALC_CHECKSUM,
+    XL_LIN_CALC_CHECKSUM_ENHANCED,
+    XL_LIN_FLAG_NO_SLEEP_MODE_EVENT,
+    XL_LIN_FLAG_USE_ID_AS_WAKEUPID,
     XL_LIN_SLAVE_OFF,
     XL_LIN_SLAVE_ON,
+    XL_LIN_ERRMSG,
+    XL_LIN_SYNCERR,
+    XL_LIN_SYNC_ERR,
+    XL_LIN_NOANS,
+    XL_LIN_WAKEUP,
+    XL_LIN_SLEEP,
+    XL_LIN_CRCINFO,
+    XL_LIN_MSGFLAG_TX,
+    XL_LIN_MSGFLAG_CRCERROR,
+    XL_LIN_WAKUP_INTERNAL,
+    XL_LIN_STAYALIVE,
+    XL_LIN_SET_SLEEPMODE,
+    XL_LIN_COMESFROM_SLEEPMODE,
     XL_LIN_MSG,
     XL_LIN_STAT_PARAM,
     XL_LIN_VERSION_2_0,
@@ -145,7 +162,32 @@ class TestConstants:
 
     def test_lin_slave_switch_constants(self):
         assert XL_LIN_SLAVE_OFF == 0
-        assert XL_LIN_SLAVE_ON == 1
+        assert XL_LIN_SLAVE_ON == 0xFF
+
+    def test_lin_slave_checksum_calc_constants(self):
+        assert XL_LIN_CALC_CHECKSUM == 0x100
+        assert XL_LIN_CALC_CHECKSUM_ENHANCED == 0x200
+
+    def test_lin_sleep_flag_constants(self):
+        assert XL_LIN_FLAG_NO_SLEEP_MODE_EVENT == 0x01
+        assert XL_LIN_FLAG_USE_ID_AS_WAKEUPID == 0x02
+
+    def test_lin_event_tag_constants(self):
+        assert XL_LIN_ERRMSG == 21
+        assert XL_LIN_SYNCERR == 22
+        assert XL_LIN_SYNC_ERR == 22
+        assert XL_LIN_NOANS == 23
+        assert XL_LIN_WAKEUP == 24
+        assert XL_LIN_SLEEP == 25
+        assert XL_LIN_CRCINFO == 26
+
+    def test_lin_event_flag_constants(self):
+        assert XL_LIN_MSGFLAG_TX == 0x40
+        assert XL_LIN_MSGFLAG_CRCERROR == 0x81
+        assert XL_LIN_WAKUP_INTERNAL == 0x01
+        assert XL_LIN_STAYALIVE == 0x00
+        assert XL_LIN_SET_SLEEPMODE == 0x01
+        assert XL_LIN_COMESFROM_SLEEPMODE == 0x02
 
 
 # ===================================================================
