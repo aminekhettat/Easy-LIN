@@ -16,6 +16,7 @@ from src.communication.lin_controller import (
     LINMode,
     ScheduleEntry,
 )
+from src.vector_xl_api import LINMessageEvent
 
 
 def _channel() -> LINChannel:
@@ -159,15 +160,17 @@ class TestLINController:  # pylint: disable=too-many-public-methods
         api = MagicMock()
         api.open_port.return_value = (10, 1)
         api.get_channel_mask.return_value = 1
-        evt = MagicMock()
-        evt.tag = 14
-        evt.timeStamp = 123
-        msg = MagicMock()
-        msg.id = 0x10
-        msg.dlc = 2
-        msg.data = [0xAA, 0xBB, 0, 0, 0, 0, 0, 0]
-        evt.lin_msg = msg
-        api.receive_event.side_effect = [evt]
+        evt = LINMessageEvent(
+            tag=20,
+            timestamp_ns=123,
+            channel_index=0,
+            lin_id=0x10,
+            dlc=2,
+            flags=0,
+            data=bytes([0xAA, 0xBB]),
+            crc=0,
+        )
+        api.receive_lin_event.side_effect = [evt]
 
         c = LINController(api=api)
         c.connect(_channel(), 19200, LINMode.MASTER)
@@ -180,8 +183,7 @@ class TestLINController:  # pylint: disable=too-many-public-methods
         api = MagicMock()
         api.open_port.return_value = (10, 1)
         api.get_channel_mask.return_value = 1
-        evt = MagicMock()
-        evt.tag = 99
+        evt = object()
 
         calls = {"count": 0}
 
@@ -191,7 +193,7 @@ class TestLINController:  # pylint: disable=too-many-public-methods
                 return evt
             return None
 
-        api.receive_event.side_effect = _receive_event
+        api.receive_lin_event.side_effect = _receive_event
 
         c = LINController(api=api)
         c.connect(_channel(), 19200, LINMode.MASTER)
@@ -203,7 +205,7 @@ class TestLINController:  # pylint: disable=too-many-public-methods
         api = MagicMock()
         api.open_port.return_value = (10, 1)
         api.get_channel_mask.return_value = 1
-        api.receive_event.return_value = None
+        api.receive_lin_event.return_value = None
 
         c = LINController(api=api)
         c.connect(_channel(), 19200, LINMode.MASTER)
@@ -326,3 +328,74 @@ class TestLINController:  # pylint: disable=too-many-public-methods
         c = LINController(api=MagicMock())
         stats = c.get_bus_statistics()
         assert isinstance(stats, BUSStatistics)
+
+    def test_configure_slave_response(self):
+        api = MagicMock()
+        api.open_port.return_value = (10, 1)
+        api.get_channel_mask.return_value = 1
+        c = LINController(api=api)
+        c.connect(_channel(), 19200, LINMode.MASTER)
+
+        c.configure_slave_response(0x10, [1, 2, 3])
+
+        api.lin_set_slave.assert_called_once()
+
+    def test_configure_slave_response_invalid_id_raises(self):
+        c = LINController(api=MagicMock())
+        c._connected = True
+        c._port_handle = 1
+        c._access_mask = 1
+        with pytest.raises(LINError):
+            c.configure_slave_response(99, [1])
+
+    def test_configure_slave_response_too_long_payload_raises(self):
+        c = LINController(api=MagicMock())
+        c._connected = True
+        c._port_handle = 1
+        c._access_mask = 1
+        with pytest.raises(LINError):
+            c.configure_slave_response(0x10, [0] * 9)
+
+    def test_set_slave_enabled(self):
+        api = MagicMock()
+        api.open_port.return_value = (10, 1)
+        api.get_channel_mask.return_value = 1
+        c = LINController(api=api)
+        c.connect(_channel(), 19200, LINMode.MASTER)
+
+        c.set_slave_enabled(0x10, True)
+        c.set_slave_enabled(0x10, False)
+
+        assert api.lin_switch_slave.call_count == 2
+
+    def test_set_slave_enabled_invalid_id_raises(self):
+        c = LINController(api=MagicMock())
+        c._connected = True
+        c._port_handle = 1
+        c._access_mask = 1
+        with pytest.raises(LINError):
+            c.set_slave_enabled(64, True)
+
+    def test_wakeup_and_sleep_mode(self):
+        api = MagicMock()
+        api.open_port.return_value = (10, 1)
+        api.get_channel_mask.return_value = 1
+        c = LINController(api=api)
+        c.connect(_channel(), 19200, LINMode.MASTER)
+
+        c.wakeup()
+        c.set_sleep_mode(wakeup_id=0x10, use_wakeup_id=True, suppress_event=True)
+
+        api.lin_wakeup.assert_called_once()
+        api.lin_set_sleep_mode.assert_called_once()
+
+    def test_drain_events(self):
+        api = MagicMock()
+        api.open_port.return_value = (10, 1)
+        api.get_channel_mask.return_value = 1
+        api.receive_lin_event.side_effect = [object(), object(), None]
+        c = LINController(api=api)
+        c.connect(_channel(), 19200, LINMode.MASTER)
+
+        events = c.drain_events(max_events=10)
+        assert len(events) == 2

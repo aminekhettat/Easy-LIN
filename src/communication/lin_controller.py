@@ -21,11 +21,18 @@ from typing import List, Optional
 from src.communication.exceptions import LINError
 from src.communication.hardware_discovery import LINChannel
 from src.vector_xl_api import (
+    LINMessageEvent,
     VectorXLApi,
+    XL_LIN_CALC_CHECKSUM,
+    XL_LIN_CALC_CHECKSUM_ENHANCED,
     XL_LIN_CHECKSUM_CLASSIC,
     XL_LIN_CHECKSUM_ENHANCED,
+    XL_LIN_FLAG_NO_SLEEP_MODE_EVENT,
+    XL_LIN_FLAG_USE_ID_AS_WAKEUPID,
     XL_LIN_MASTER,
     XL_LIN_SLAVE,
+    XL_LIN_SLAVE_OFF,
+    XL_LIN_SLAVE_ON,
 )
 
 
@@ -77,6 +84,7 @@ class LINController:
         """Create controller with optional API dependency injection."""
         self._api = api or VectorXLApi()
         self._connected = False
+        self._mode = LINMode.MASTER
         self._port_handle: Optional[int] = None
         self._access_mask: Optional[int] = None
         self._checksum_table: List[int] = [XL_LIN_CHECKSUM_ENHANCED] * 64
@@ -150,6 +158,7 @@ class LINController:
 
         self._port_handle = port_handle
         self._access_mask = access_mask
+        self._mode = mode
         self._connected = True
 
     def disconnect(self) -> None:
@@ -163,6 +172,7 @@ class LINController:
         self._api.close_driver()
 
         self._connected = False
+        self._mode = LINMode.MASTER
         self._port_handle = None
         self._access_mask = None
 
@@ -186,6 +196,55 @@ class LINController:
         )
         self._tx_count += 1
 
+    def configure_slave_response(
+        self,
+        frame_id: int,
+        data: List[int],
+        checksum: int = XL_LIN_CALC_CHECKSUM_ENHANCED,
+    ) -> None:
+        """Configure one runtime slave task on the active LIN channel."""
+        self._require_connected()
+        if frame_id < 0 or frame_id > 63:
+            raise LINError("frame_id must be in range 0..63")
+        if len(data) > 8:
+            raise LINError("DLC cannot exceed 8 bytes")
+        self._api.lin_set_slave(
+            self._port_handle,
+            self._access_mask,
+            frame_id,
+            data,
+            len(data),
+            checksum,
+        )
+
+    def set_slave_enabled(self, frame_id: int, enabled: bool) -> None:
+        """Enable or disable one configured slave response during runtime."""
+        self._require_connected()
+        if frame_id < 0 or frame_id > 63:
+            raise LINError("frame_id must be in range 0..63")
+        mode = XL_LIN_SLAVE_ON if enabled else XL_LIN_SLAVE_OFF
+        self._api.lin_switch_slave(self._port_handle, self._access_mask, frame_id, mode)
+
+    def wakeup(self) -> None:
+        """Transmit LIN wake-up pattern on active channel."""
+        self._require_connected()
+        self._api.lin_wakeup(self._port_handle, self._access_mask)
+
+    def set_sleep_mode(
+        self,
+        wakeup_id: int = 0,
+        use_wakeup_id: bool = False,
+        suppress_event: bool = False,
+    ) -> None:
+        """Put active channel into sleep mode with optional wake-up ID policy."""
+        self._require_connected()
+        flags = 0
+        if suppress_event:
+            flags |= XL_LIN_FLAG_NO_SLEEP_MODE_EVENT
+        if use_wakeup_id:
+            flags |= XL_LIN_FLAG_USE_ID_AS_WAKEUPID
+        self._api.lin_set_sleep_mode(self._port_handle, self._access_mask, flags, wakeup_id)
+
     def receive_frame(self, timeout_ms: int) -> Optional[LINFrame]:
         """Receive one frame event from the bus.
 
@@ -198,22 +257,32 @@ class LINController:
         self._require_connected()
         deadline = time.monotonic() + (timeout_ms / 1000.0)
         while time.monotonic() < deadline:
-            evt = self._api.receive_event(self._port_handle)
+            evt = self._api.receive_lin_event(self._port_handle)
             if evt is None:
                 time.sleep(0.001)
                 continue
-            if getattr(evt, "tag", -1) != 14:
+            if not isinstance(evt, LINMessageEvent):
                 continue
-            msg = evt.lin_msg
             frame = LINFrame(
-                frame_id=int(msg.id & 0x3F),
-                dlc=int(msg.dlc),
-                data=bytes(msg.data[: msg.dlc]),
-                timestamp_ns=int(evt.timeStamp),
+                frame_id=int(evt.lin_id & 0x3F),
+                dlc=int(evt.dlc),
+                data=bytes(evt.data[: evt.dlc]),
+                timestamp_ns=int(evt.timestamp_ns),
             )
             self._rx_count += 1
             return frame
         return None
+
+    def drain_events(self, max_events: int = 256) -> List[object]:
+        """Drain pending LIN events from queue in one deterministic batch."""
+        self._require_connected()
+        out: List[object] = []
+        for _ in range(max(1, max_events)):
+            evt = self._api.receive_lin_event(self._port_handle)
+            if evt is None:
+                break
+            out.append(evt)
+        return out
 
     def start_scheduler(self, schedule: List[ScheduleEntry], interval_ms: int) -> None:
         """Start periodic scheduler loop over a list of schedule entries."""
