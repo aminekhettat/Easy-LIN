@@ -14,6 +14,7 @@ Covers:
 from __future__ import annotations
 
 import os
+import csv
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -184,6 +185,72 @@ class TestFrameMonitor:
         with open(out_path, encoding="utf-8") as fh:
             content = fh.read()
         assert content.strip().startswith("Timestamp")
+
+    def test_toggle_csv_logging_cancelled(self, qapp):
+        from src.gui.communication_panel import _FrameMonitor
+
+        monitor = _FrameMonitor()
+        messages = []
+        monitor.status_message.connect(messages.append)
+
+        with patch("src.gui.communication_panel.QFileDialog") as MockDlg:
+            MockDlg.getSaveFileName.return_value = ("", "")
+            monitor._toggle_csv_logging()
+
+        assert monitor.is_logging is False
+        assert any("cancelled" in message.lower() for message in messages)
+
+    def test_live_csv_logging_writes_rows(self, qapp, tmp_path):
+        from src.gui.communication_panel import _FrameMonitor
+
+        monitor = _FrameMonitor()
+        out_path = str(tmp_path / "live.csv")
+
+        with patch("src.gui.communication_panel.QFileDialog") as MockDlg:
+            MockDlg.getSaveFileName.return_value = (out_path, "CSV files (*.csv)")
+            monitor._toggle_csv_logging()
+
+        frame = ReceivedFrame(frame_id=0x10, data=b"\x01\x02", timestamp_ns=5_000_000)
+        monitor.add_frame(frame)
+        monitor.stop_csv_logging()
+
+        with open(out_path, newline="", encoding="utf-8") as fh:
+            rows = list(csv.reader(fh))
+
+        assert rows[0] == monitor.CSV_COLUMNS
+        assert rows[1][0] == "5.000"
+        assert rows[1][2] == "0x10"
+        assert rows[1][3] == "2"
+        assert rows[1][4] == "OK"
+        assert rows[1][5:13] == ["0x01", "0x02", "", "", "", "", "", ""]
+        assert rows[1][13] == "01 02"
+        assert monitor.is_logging is False
+
+    def test_toggle_csv_logging_stops_active_session(self, qapp, tmp_path):
+        from src.gui.communication_panel import _FrameMonitor
+
+        monitor = _FrameMonitor()
+        out_path = str(tmp_path / "toggle-stop.csv")
+        messages = []
+        monitor.status_message.connect(messages.append)
+
+        with patch("src.gui.communication_panel.QFileDialog") as MockDlg:
+            MockDlg.getSaveFileName.return_value = (out_path, "CSV files (*.csv)")
+            monitor._toggle_csv_logging()
+
+        assert monitor.is_logging is True
+        monitor._toggle_csv_logging()
+
+        assert monitor.is_logging is False
+        assert any("started" in message.lower() for message in messages)
+        assert any("stopped" in message.lower() for message in messages)
+
+    def test_stop_csv_logging_without_active_session(self, qapp):
+        from src.gui.communication_panel import _FrameMonitor
+
+        monitor = _FrameMonitor()
+        monitor.stop_csv_logging()
+        assert monitor.is_logging is False
 
 
 # ---------------------------------------------------------------------------
@@ -641,6 +708,15 @@ class TestCommunicationPanelCallbacks:
         panel._monitor_add_frame(frame)
         assert panel._monitor._table.rowCount() == 1
 
+    def test_monitor_status_messages_are_forwarded(self, panel, qapp):
+        messages = []
+        panel.status_message.connect(messages.append)
+
+        panel._monitor.status_message.emit("CSV logging started")
+        qapp.processEvents()
+
+        assert "CSV logging started" in messages
+
     def test_show_error(self, panel, qapp):
         messages = []
         panel.status_message.connect(messages.append)
@@ -687,6 +763,13 @@ class TestCommunicationPanelCallbacks:
 
         panel._backend.connect.assert_not_called()
         assert any("select one master" in m.lower() for m in messages)
+
+    def test_panel_stop_csv_logging_delegates_to_monitor(self, panel):
+        panel._monitor.stop_csv_logging = MagicMock()
+
+        panel.stop_csv_logging()
+
+        panel._monitor.stop_csv_logging.assert_called_once()
 
 
 class TestVectorBackendAdapter:

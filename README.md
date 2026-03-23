@@ -40,6 +40,8 @@ The GUI is designed for blind and low-vision users:
 - Managed in a separate window (View > Communication Window or Ctrl+Shift+C)
 - Vector transport through `python-can` + Vector XL driver
 - Connect/disconnect, send frames, monitor RX/TX
+- Start and stop live CSV logging while the communication window remains open
+- Logged frames include timestamp, frame identity, status, per-byte columns, and hex payload
 - Automatic simulation mode when Vector backend is not available
 
 ### LIN Runtime Workflows

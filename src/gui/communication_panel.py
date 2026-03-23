@@ -16,6 +16,7 @@ schedule execution, and live frame monitoring.
 import csv
 import io
 import logging
+from datetime import datetime
 from dataclasses import dataclass
 from typing import Optional, Protocol
 
@@ -163,17 +164,43 @@ class _Bridge(QObject):
 class _FrameMonitor(QWidget):
     """Scrolling table of received LIN frames."""
 
+    status_message = Signal(str)
+
     MAX_ROWS = 500
+    CSV_COLUMNS = [
+        "Timestamp (ms)",
+        "Timestamp (ISO)",
+        "Frame ID",
+        "DLC",
+        "Status",
+        "Data 0",
+        "Data 1",
+        "Data 2",
+        "Data 3",
+        "Data 4",
+        "Data 5",
+        "Data 6",
+        "Data 7",
+        "Data (hex)",
+    ]
 
     def __init__(self, parent=None):
         """Initialize the frame monitor table and clear action."""
         super().__init__(parent)
+        self._logging_path: Optional[str] = None
+        self._logging_file = None
+        self._logging_writer: Optional[csv.writer] = None
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
         hdr = QHBoxLayout()
         hdr.addWidget(QLabel("<b>Frame Monitor</b>"))
         hdr.addStretch()
+        self._log_btn = QPushButton("Start CSV Log")
+        self._log_btn.setFixedWidth(100)
+        self._log_btn.setAccessibleName("Start or stop CSV logging")
+        self._log_btn.clicked.connect(self._toggle_csv_logging)
+        hdr.addWidget(self._log_btn)
         self._export_btn = QPushButton("Export CSV")
         self._export_btn.setFixedWidth(90)
         self._export_btn.setAccessibleName("Export frame monitor to CSV")
@@ -198,9 +225,7 @@ class _FrameMonitor(QWidget):
 
     def add_frame(self, frame: ReceivedFrame) -> None:
         """Append one received frame to the monitor table."""
-        ts_ms = frame.timestamp_ns / 1_000_000
-        hex_data = " ".join(f"{b:02X}" for b in frame.data)
-        status = "CRC ERR" if frame.crc_error else "OK"
+        record = self._frame_to_record(frame)
 
         row = self._table.rowCount()
         if row >= self.MAX_ROWS:
@@ -216,17 +241,96 @@ class _FrameMonitor(QWidget):
                 it.setTextAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
             return it
 
-        self._table.setItem(row, 0, _i(f"{ts_ms:.3f}", center=True))
-        self._table.setItem(row, 1, _i(f"0x{frame.frame_id:02X}", center=True))
-        self._table.setItem(row, 2, _i(str(len(frame.data)), center=True))
-        self._table.setItem(row, 3, _i(hex_data))
-        status_item = _i(status, center=True)
+        self._table.setItem(row, 0, _i(record["timestamp_ms"], center=True))
+        self._table.setItem(row, 1, _i(record["frame_id"], center=True))
+        self._table.setItem(row, 2, _i(record["dlc"], center=True))
+        self._table.setItem(row, 3, _i(record["data_hex"]))
+        status_item = _i(record["status"], center=True)
         if frame.crc_error:
             status_item.setForeground(QColor("red"))
         else:
             status_item.setForeground(QColor("green"))
         self._table.setItem(row, 4, status_item)
         self._table.scrollToBottom()
+        self._write_logged_frame(record)
+
+    @property
+    def is_logging(self) -> bool:
+        """Return whether live CSV logging is currently active."""
+        return self._logging_writer is not None
+
+    def stop_csv_logging(self) -> None:
+        """Flush and close the active CSV log, if any."""
+        if self._logging_file is None:
+            return
+        path = self._logging_path or "CSV log"
+        self._logging_file.close()
+        self._logging_file = None
+        self._logging_writer = None
+        self._logging_path = None
+        self._log_btn.setText("Start CSV Log")
+        self.status_message.emit(f"CSV logging stopped: {path}")
+
+    def _frame_to_record(self, frame: ReceivedFrame) -> dict[str, object]:
+        """Return normalized values for table display and CSV logging."""
+        timestamp_ms = f"{frame.timestamp_ns / 1_000_000:.3f}"
+        timestamp_iso = datetime.fromtimestamp(frame.timestamp_ns / 1_000_000_000).isoformat(
+            timespec="milliseconds"
+        )
+        data_hex = " ".join(f"{byte:02X}" for byte in frame.data)
+        data_columns = [f"0x{byte:02X}" for byte in frame.data[:8]]
+        data_columns.extend([""] * (8 - len(data_columns)))
+        return {
+            "timestamp_ms": timestamp_ms,
+            "timestamp_iso": timestamp_iso,
+            "frame_id": f"0x{frame.frame_id:02X}",
+            "dlc": str(len(frame.data)),
+            "status": "CRC ERR" if frame.crc_error else "OK",
+            "data_columns": data_columns,
+            "data_hex": data_hex,
+        }
+
+    def _write_logged_frame(self, record: dict[str, object]) -> None:
+        """Append one normalized frame record to the active CSV log."""
+        if self._logging_writer is None:
+            return
+        self._logging_writer.writerow(
+            [
+                record["timestamp_ms"],
+                record["timestamp_iso"],
+                record["frame_id"],
+                record["dlc"],
+                record["status"],
+                *record["data_columns"],
+                record["data_hex"],
+            ]
+        )
+        assert self._logging_file is not None
+        self._logging_file.flush()
+
+    def _start_csv_logging(self, path: str) -> None:
+        """Open a CSV file and start appending newly received frames."""
+        file_handle = open(path, "w", newline="", encoding="utf-8")
+        writer = csv.writer(file_handle)
+        writer.writerow(self.CSV_COLUMNS)
+        self._logging_path = path
+        self._logging_file = file_handle
+        self._logging_writer = writer
+        self._log_btn.setText("Stop CSV Log")
+        self.status_message.emit(f"CSV logging started: {path}")
+
+    def _toggle_csv_logging(self) -> None:
+        """Start or stop live CSV logging for received frames."""
+        if self.is_logging:
+            self.stop_csv_logging()
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Start Frame Logging", "", "CSV files (*.csv);;All files (*)"
+        )
+        if not path:
+            self.status_message.emit("CSV logging cancelled.")
+            return
+        self._start_csv_logging(path)
 
     def _export_csv(self) -> None:
         """Export the current monitor contents to a user-chosen CSV file."""
@@ -289,6 +393,7 @@ class CommunicationPanel(QWidget):
         self._bridge.error_occurred.connect(self._show_error)
 
         self._build_ui()
+        self._monitor.status_message.connect(self.status_message)
         self._refresh_channels()
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
@@ -665,6 +770,10 @@ class CommunicationPanel(QWidget):
         """Forward a hardware error message to the main window status bar."""
         self.status_message.emit(f"Hardware error: {msg}")
         self.communication_state_changed.emit("Error")
+
+    def stop_csv_logging(self) -> None:
+        """Stop live frame logging if it is active."""
+        self._monitor.stop_csv_logging()
 
 
 # ---------------------------------------------------------------------------

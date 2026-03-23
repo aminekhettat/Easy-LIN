@@ -121,6 +121,15 @@ class TestCommunicationWindowCloseEvent:
         comm_window._settings.setValue.assert_called_once()
         assert event.isAccepted() is False  # event.ignore() was called
 
+    def test_close_event_stops_live_csv_logging(self, comm_window):
+        comm_window._comm_panel.stop_csv_logging = MagicMock()
+        comm_window._settings = MagicMock(spec=QSettings)
+        event = QCloseEvent()
+
+        comm_window.closeEvent(event)
+
+        comm_window._comm_panel.stop_csv_logging.assert_called_once()
+
 
 class TestCommunicationWindowSignals:
     def test_status_message_reemitted(self, comm_window, qapp):

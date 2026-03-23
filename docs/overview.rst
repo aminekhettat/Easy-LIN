@@ -25,7 +25,7 @@ Architecture
 - **GUI toolkit:** PySide6 (Qt 6)
 - **Main window:** LDF viewer with hierarchy tree, search bar, and breadcrumb
 - **Communication window:** Separate top-level window for hardware controls and
-  live frame monitoring
+  live frame monitoring and start/stop CSV logging
 - **Core:** Framework-agnostic parser, presenter, and consistency modules
 
 Accessibility Features (0.6.0)
@@ -66,6 +66,12 @@ LIN Runtime Workflows
 
   - Enter sleep mode with optional wake-up ID policy.
   - Transmit wake-up pattern and continue normal communication sequence.
+
+- **Live CSV capture workflow**
+
+  - Start logging directly from the communication window without stopping acquisition.
+  - Append each received frame to a CSV row with wall-clock timestamp, frame ID, DLC, status, and dedicated byte columns.
+  - Stop logging at any time; active logging is also closed when the communication window is hidden.
 
 Hardware Support Assumptions
 ----------------------------

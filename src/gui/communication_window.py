@@ -67,5 +67,6 @@ class CommunicationWindow(QMainWindow):
     def closeEvent(self, event) -> None:
         """Hide the window instead of destroying it for instant reopen."""
         self._settings.setValue("comm_geometry", self.saveGeometry())
+        self._comm_panel.stop_csv_logging()
         event.ignore()
         self.hide()
