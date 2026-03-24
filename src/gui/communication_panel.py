@@ -1,4 +1,4 @@
-"""Communication panel widget for the preserved PyQt frontend.
+"""Communication panel widget for the PySide6 frontend.
 
 Provides the user interface for hardware connection, manual frame sending,
 schedule execution, and live frame monitoring.
@@ -109,7 +109,7 @@ class VectorBackendAdapter:
     @property
     def dll_path(self) -> Optional[str]:
         """Return the loaded DLL path from the underlying LIN master."""
-        return getattr(self._master, 'dll_path', None)
+        return getattr(self._master, "dll_path", None)
 
     def preflight(self) -> tuple[bool, str]:
         """Forward a DLL preflight check to the underlying LIN master."""
@@ -195,9 +195,7 @@ class _FrameMonitor(QWidget):
         hdr = QHBoxLayout()
         monitor_label = QLabel("<b>Frame Monitor</b>")
         monitor_label.setAccessibleName("Frame monitor title")
-        monitor_label.setAccessibleDescription(
-            "Section title for the received LIN frame monitor."
-        )
+        monitor_label.setAccessibleDescription("Section title for the received LIN frame monitor.")
         hdr.addWidget(monitor_label)
         hdr.addStretch()
         self._log_btn = QPushButton("Start CSV Log")
@@ -231,7 +229,9 @@ class _FrameMonitor(QWidget):
         self._table.setHorizontalHeaderLabels(cols)
         self._table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         for c in (0, 1, 2, 4):
-            self._table.horizontalHeader().setSectionResizeMode(c, QHeaderView.ResizeMode.ResizeToContents)
+            self._table.horizontalHeader().setSectionResizeMode(
+                c, QHeaderView.ResizeMode.ResizeToContents
+            )
         self._table.verticalHeader().setVisible(False)
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._table.setAlternatingRowColors(True)
@@ -544,7 +544,9 @@ class CommunicationPanel(QWidget):
         )
         channel_label = QLabel("Channel:")
         channel_label.setAccessibleName("Hardware channel label")
-        channel_label.setAccessibleDescription("Label for the LIN hardware channel selection field.")
+        channel_label.setAccessibleDescription(
+            "Label for the LIN hardware channel selection field."
+        )
         channel_label.setBuddy(self._channel_combo)
         layout.addWidget(channel_label)
         layout.addWidget(self._channel_combo)
@@ -671,9 +673,7 @@ class CommunicationPanel(QWidget):
         self._sched_stop_btn = QPushButton("â–  Stop")
         self._sched_stop_btn.setEnabled(False)
         self._sched_stop_btn.setAccessibleName("Stop schedule")
-        self._sched_stop_btn.setAccessibleDescription(
-            "Stop the currently running schedule table."
-        )
+        self._sched_stop_btn.setAccessibleDescription("Stop the currently running schedule table.")
         self._sched_stop_btn.setStyleSheet(
             "QPushButton:enabled { background-color: #8B0000; color: white; }"
         )
@@ -771,7 +771,9 @@ class CommunicationPanel(QWidget):
         metadata = {
             # Replace backslashes so os.path.basename works correctly on Linux
             # when source_path originates from a Windows-style path (e.g. C:\temp\net.ldf).
-            "LDF File Name": os.path.basename(source_path.replace("\\", "/")) if source_path else "",
+            "LDF File Name": os.path.basename(source_path.replace("\\", "/"))
+            if source_path
+            else "",
             "LDF File Path": source_path,
             "LDF Channel Name": ldf.channel_name if ldf is not None and ldf.channel_name else "",
             "Protocol Version": ldf.protocol_version if ldf is not None else "",
@@ -782,7 +784,8 @@ class CommunicationPanel(QWidget):
             "Selected Master": selection.master if selection is not None else "",
             "Selected Slaves": "; ".join(selection.slaves) if selection is not None else "",
             "Frame Publishers": "|".join(
-                f"0x{frame.frame_id:02X}={frame.publisher}" for frame in (ldf.frames if ldf is not None else [])
+                f"0x{frame.frame_id:02X}={frame.publisher}"
+                for frame in (ldf.frames if ldf is not None else [])
             ),
         }
         self._monitor.set_session_metadata(metadata)
@@ -850,7 +853,7 @@ class CommunicationPanel(QWidget):
             self._sched_start_btn.setEnabled(self._sched_combo.count() > 0)
             self.status_message.emit("Connected to LIN hardware.")
             self.communication_state_changed.emit("Connected")
-            dll_path = getattr(self._backend, 'dll_path', None)
+            dll_path = getattr(self._backend, "dll_path", None)
             if isinstance(dll_path, str):
                 source = "bundled" if "third_party" in dll_path.replace("\\", "/") else "system"
                 self.status_message.emit(f"Runtime: {dll_path} ({source})")
@@ -985,4 +988,3 @@ class CommunicationPanel(QWidget):
 from src.communication import backend_registry as _backend_registry  # noqa: E402
 
 _backend_registry.register("vector", VectorBackendAdapter)
-

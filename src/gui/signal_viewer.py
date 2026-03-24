@@ -1,2 +1,4 @@
-# This file is scheduled for deletion. The Tkinter frontend has been
-# replaced by PySide6. See src/gui/ldf_viewer.py.
+"""Legacy Tk compatibility shim for the historical signal viewer.
+
+The active PySide6 implementation lives in src.gui.ldf_viewer.
+"""

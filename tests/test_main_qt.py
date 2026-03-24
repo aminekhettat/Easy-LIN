@@ -146,12 +146,12 @@ def test_run_qt_app_creates_and_shows_window():
 
 def test_run_qt_app_loads_ldf_from_argv():
     """When argv has a non-flag argument, load_ldf_file should be called."""
-    fake_app, fake_window, _lock, kwargs = _make_seams(["test", "sample.ldf"])
+    fake_app, fake_window, _lock, kwargs = _make_seams(["test", "example_input_file.ldf"])
 
     with pytest.raises(SystemExit):
-        run_qt_app(["test", "sample.ldf"], **kwargs)
+        run_qt_app(["test", "example_input_file.ldf"], **kwargs)
 
-    assert fake_window.loaded_path == "sample.ldf"
+    assert fake_window.loaded_path == "example_input_file.ldf"
 
 
 def test_run_qt_app_skips_flag_only_argv():

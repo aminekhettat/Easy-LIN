@@ -67,7 +67,7 @@ class MainWindow(QMainWindow):
     """Top-level application window."""
 
     def __init__(self) -> None:
-        """Initialize the main PyQt window and restore persisted state."""
+        """Initialize the main PySide6 window and restore persisted state."""
         super().__init__()
         self._ldf: Optional[LDFFile] = None
         self._ldf_path: Optional[str] = None
@@ -142,10 +142,18 @@ class MainWindow(QMainWindow):
         self._sb_issues.setAccessibleName("LDF issues status")
         self._sb_comm.setAccessibleName("Communication status")
         self._sb_event.setAccessibleName("Latest event status")
-        self._sb_ldf.setAccessibleDescription("Summarizes the currently loaded LDF version, speed, and frame count.")
-        self._sb_issues.setAccessibleDescription("Shows the current number of LDF validation warnings and errors.")
-        self._sb_comm.setAccessibleDescription("Shows whether hardware communication is connected, disconnected, or in error.")
-        self._sb_event.setAccessibleDescription("Shows the latest event or user feedback message from the application.")
+        self._sb_ldf.setAccessibleDescription(
+            "Summarizes the currently loaded LDF version, speed, and frame count."
+        )
+        self._sb_issues.setAccessibleDescription(
+            "Shows the current number of LDF validation warnings and errors."
+        )
+        self._sb_comm.setAccessibleDescription(
+            "Shows whether hardware communication is connected, disconnected, or in error."
+        )
+        self._sb_event.setAccessibleDescription(
+            "Shows the latest event or user feedback message from the application."
+        )
 
         self._set_status_label_color(self._sb_ldf, STATUS_COLOR_NEUTRAL)
         self._set_status_label_color(self._sb_issues, STATUS_COLOR_NEUTRAL)
@@ -297,7 +305,9 @@ class MainWindow(QMainWindow):
         tb.setMovable(False)
         tb.setIconSize(QSize(24, 24))
         tb.setAccessibleName("Main toolbar")
-        tb.setAccessibleDescription("Toolbar containing quick-access actions such as opening an LDF file.")
+        tb.setAccessibleDescription(
+            "Toolbar containing quick-access actions such as opening an LDF file."
+        )
         tb.addAction(self._open_action)
 
     # ------------------------------------------------------------------
@@ -563,6 +573,7 @@ class MainWindow(QMainWindow):
             empty = QAction("(empty)", self)
             empty.setEnabled(False)
             self._recent_menu.addAction(empty)
+
     # ------------------------------------------------------------------
     # Dialogs
     # ------------------------------------------------------------------
@@ -587,7 +598,12 @@ class MainWindow(QMainWindow):
         logo_pixmap = self._load_logo_pixmap(APP_COMPANY_LOGO_PATH)
         if logo_pixmap is not None:
             logo_label.setPixmap(
-                logo_pixmap.scaled(220, 120, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                logo_pixmap.scaled(
+                    220,
+                    120,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
             )
         else:
             logo_label.setText(APP_COMPANY)
@@ -745,7 +761,9 @@ class MainWindow(QMainWindow):
         slave_label.setBuddy(slaves_list)
         layout.addWidget(slaves_list)
 
-        btn_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        btn_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
         layout.addWidget(btn_box)
         ok_btn = btn_box.button(QDialogButtonBox.StandardButton.Ok)
         cancel_btn = btn_box.button(QDialogButtonBox.StandardButton.Cancel)
@@ -759,6 +777,7 @@ class MainWindow(QMainWindow):
             )
 
         def _accept_if_valid() -> None:
+            """Reject confirmation until at least one slave node is selected."""
             selected_slaves = [i.text() for i in slaves_list.selectedItems()]
             if not selected_slaves:
                 QMessageBox.warning(dlg, APP_NAME, "Select at least one slave to continue.")
