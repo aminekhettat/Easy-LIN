@@ -7,7 +7,7 @@ Covers:
 - _add_recent and _update_recent_menu (with duplicates, max 10)
 - _show_about dialog
 - _show_accessibility_help
-- _open_vector_docs (mock webbrowser.open)
+- _open_user_manual (mock webbrowser.open)
 - _load_logo_pixmap with existing and non-existing paths
 - _restore_geometry with and without saved geometry
 - closeEvent persists geometry and closes comm window
@@ -17,6 +17,8 @@ Covers:
 - _build_about_html
 - _build_issues_report_text
 """
+
+# pylint: disable=too-many-lines
 
 from __future__ import annotations
 
@@ -38,7 +40,6 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QComboBox,
     QPlainTextEdit,
-    QTextBrowser,
 )
 from PySide6.QtCore import QSettings
 from PySide6.QtGui import QCloseEvent
@@ -313,8 +314,27 @@ class TestShowAbout:
         def _fake_exec(dialog):
             captured["dialog_name"] = dialog.accessibleName()
             captured["dialog_description"] = dialog.accessibleDescription()
-            about_text = dialog.findChildren(QTextBrowser)[0]
-            captured["about_description"] = about_text.accessibleDescription()
+            captured["dialog_min_w"] = dialog.minimumWidth()
+            captured["dialog_min_h"] = dialog.minimumHeight()
+            labels = dialog.findChildren(QLabel)
+            summary = next(
+                (lbl for lbl in labels if "open-source LIN master GUI" in lbl.accessibleName()),
+                None,
+            )
+            website = next(
+                (lbl for lbl in labels if lbl.accessibleName().startswith("Website:")), None
+            )
+            author = next(
+                (lbl for lbl in labels if lbl.accessibleName().startswith("Author:")), None
+            )
+            captured["about_description"] = summary.accessibleDescription() if summary else ""
+            captured["about_body_summary"] = summary.text() if summary else ""
+            captured["about_body_author"] = author.text() if author else ""
+            captured["about_body_website"] = website.text() if website else ""
+            logos = [
+                lbl for lbl in dialog.findChildren(QLabel) if lbl.accessibleName() == "Company logo"
+            ]
+            captured["logo_max_h"] = logos[0].maximumHeight() if logos else 0
             close_buttons = [
                 button for button in dialog.findChildren(QPushButton) if "Close" in button.text()
             ]
@@ -327,8 +347,43 @@ class TestShowAbout:
 
         assert captured["dialog_name"] == "About Easy-LIN dialog"
         assert "Application information" in captured["dialog_description"]
-        assert "Version, author, contact" in captured["about_description"]
+        assert "Product summary description" in captured["about_description"]
+        assert captured["dialog_min_w"] >= 640
+        assert captured["dialog_min_h"] >= 520
+        assert captured["about_body_summary"]
+        assert "Author:" in captured["about_body_author"]
+        assert "Website:" in captured["about_body_website"]
+        assert captured["logo_max_h"] <= 110
         assert captured["close_name"] == "Close About dialog"
+
+
+class TestMenuOrganization:
+    def test_accessibility_actions_moved_from_file_menu(self, main_window):
+        menu_actions = main_window.menuBar().actions()
+
+        file_menu = next(action.menu() for action in menu_actions if action.text() == "&File")
+        accessibility_menu = next(
+            action.menu() for action in menu_actions if action.text() == "&Accessibility"
+        )
+        help_menu = next(action.menu() for action in menu_actions if action.text() == "&Help")
+
+        file_entries = [a.text() for a in file_menu.actions() if a.text()]
+        accessibility_entries = [a.text() for a in accessibility_menu.actions() if a.text()]
+        help_entries = [a.text() for a in help_menu.actions() if a.text()]
+
+        assert "Focus LDF Tree" not in file_entries
+        assert "Focus Communication" not in file_entries
+        assert "Next Region" not in file_entries
+        assert "Previous Region" not in file_entries
+
+        assert "Focus LDF Tree" in accessibility_entries
+        assert "Focus Communication" in accessibility_entries
+        assert "Next Region" in accessibility_entries
+        assert "Previous Region" in accessibility_entries
+        assert "Accessibility Help" in accessibility_entries
+
+        assert all("Vector XL Driver Library" not in text for text in help_entries)
+        assert any("User Manual" in text for text in help_entries)
 
 
 class TestMainWindowAccessibilityMetadata:
@@ -392,19 +447,20 @@ class TestShowAccessibilityHelp:
 
 
 # ---------------------------------------------------------------------------
-# _open_vector_docs
+# _open_user_manual
 # ---------------------------------------------------------------------------
 
 
-class TestOpenVectorDocs:
-    def test_open_vector_docs(self, monkeypatch):
+class TestOpenUserManual:
+    def test_open_user_manual(self, monkeypatch):
         mock_open = MagicMock()
         monkeypatch.setattr("webbrowser.open", mock_open)
         from src.gui.main_window_qt import MainWindow
 
-        MainWindow._open_vector_docs()
+        MainWindow._open_user_manual()
         mock_open.assert_called_once()
-        assert "vector.com" in mock_open.call_args[0][0]
+        target = mock_open.call_args[0][0]
+        assert "docs" in target.lower() or "readme" in target.lower()
 
 
 # ---------------------------------------------------------------------------

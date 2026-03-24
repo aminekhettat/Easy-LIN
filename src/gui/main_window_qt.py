@@ -13,8 +13,11 @@ menus, toolbar, and persistent window state.
         in LICENSE.
 """
 
+# pylint: disable=too-many-lines
+
 import logging
 import os
+from pathlib import Path
 from datetime import datetime
 from typing import List, Optional
 
@@ -28,7 +31,6 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QVBoxLayout,
-    QTextBrowser,
     QPlainTextEdit,
     QComboBox,
     QListWidget,
@@ -55,7 +57,7 @@ log = logging.getLogger(__name__)
 
 APP_NAME = "Easy-LIN"
 APP_ORG = "Easy-LIN"
-APP_VERSION = "0.8.0"
+APP_VERSION = "0.8.1"
 APP_AUTHOR = "Amine Khettat"
 APP_COMPANY = "BLIND SYSTEMS"
 APP_CONTACT_EMAIL = "contact@blindsystems.org"
@@ -266,26 +268,6 @@ class MainWindow(QMainWindow):
         self._open_action.triggered.connect(self._open_ldf)
         file_menu.addAction(self._open_action)
 
-        focus_viewer_action = QAction("Focus LDF Tree", self)
-        focus_viewer_action.setShortcut("Ctrl+1")
-        focus_viewer_action.triggered.connect(self._focus_ldf_tree)
-        file_menu.addAction(focus_viewer_action)
-
-        focus_comm_action = QAction("Focus Communication", self)
-        focus_comm_action.setShortcut("Ctrl+2")
-        focus_comm_action.triggered.connect(self._focus_communication)
-        file_menu.addAction(focus_comm_action)
-
-        next_region_action = QAction("Next Region", self)
-        next_region_action.setShortcut("F6")
-        next_region_action.triggered.connect(self._focus_next_region)
-        file_menu.addAction(next_region_action)
-
-        prev_region_action = QAction("Previous Region", self)
-        prev_region_action.setShortcut("Shift+F6")
-        prev_region_action.triggered.connect(self._focus_previous_region)
-        file_menu.addAction(prev_region_action)
-
         file_menu.addSeparator()
 
         self._recent_menu = file_menu.addMenu("Recent Files")
@@ -298,6 +280,36 @@ class MainWindow(QMainWindow):
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
 
+        # ---- Accessibility ---------------------------------------------
+        accessibility_menu = mb.addMenu("&Accessibility")
+
+        focus_viewer_action = QAction("Focus LDF Tree", self)
+        focus_viewer_action.setShortcut("Ctrl+1")
+        focus_viewer_action.triggered.connect(self._focus_ldf_tree)
+        accessibility_menu.addAction(focus_viewer_action)
+
+        focus_comm_action = QAction("Focus Communication", self)
+        focus_comm_action.setShortcut("Ctrl+2")
+        focus_comm_action.triggered.connect(self._focus_communication)
+        accessibility_menu.addAction(focus_comm_action)
+
+        next_region_action = QAction("Next Region", self)
+        next_region_action.setShortcut("F6")
+        next_region_action.triggered.connect(self._focus_next_region)
+        accessibility_menu.addAction(next_region_action)
+
+        prev_region_action = QAction("Previous Region", self)
+        prev_region_action.setShortcut("Shift+F6")
+        prev_region_action.triggered.connect(self._focus_previous_region)
+        accessibility_menu.addAction(prev_region_action)
+
+        accessibility_menu.addSeparator()
+
+        accessibility_action = QAction("Accessibility Help", self)
+        accessibility_action.setShortcut("F1")
+        accessibility_action.triggered.connect(self._show_accessibility_help)
+        accessibility_menu.addAction(accessibility_action)
+
         # ---- View -------------------------------------------------------
         view_menu = mb.addMenu("&View")
         self._toggle_comm_action = QAction("Communication Window", self)
@@ -308,18 +320,13 @@ class MainWindow(QMainWindow):
         # ---- Help -------------------------------------------------------
         help_menu = mb.addMenu("&Help")
 
-        accessibility_action = QAction("Accessibility Help", self)
-        accessibility_action.setShortcut("F1")
-        accessibility_action.triggered.connect(self._show_accessibility_help)
-        help_menu.addAction(accessibility_action)
-
         about_action = QAction("&About Easy-LIN", self)
         about_action.triggered.connect(self._show_about)
         help_menu.addAction(about_action)
 
-        vector_action = QAction("Vector XL Driver Library...", self)
-        vector_action.triggered.connect(self._open_vector_docs)
-        help_menu.addAction(vector_action)
+        manual_action = QAction("Open &GUI User Manual", self)
+        manual_action.triggered.connect(self._open_user_manual)
+        help_menu.addAction(manual_action)
 
     def _build_toolbar(self) -> None:
         """Create the fixed main toolbar."""
@@ -606,10 +613,11 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def _show_about(self) -> None:
-        """Display an About dialog with clickable contact links and company logo."""
+        """Display an About dialog using accessible label-only content."""
         dialog = QDialog(self)
         dialog.setWindowTitle(f"About {APP_NAME}")
-        dialog.setMinimumWidth(560)
+        dialog.setMinimumSize(640, 520)
+        dialog.resize(760, 560)
         dialog.setAccessibleName(f"About {APP_NAME} dialog")
         dialog.setAccessibleDescription(
             "Application information, support contacts, and company details for Easy-LIN."
@@ -619,6 +627,7 @@ class MainWindow(QMainWindow):
 
         logo_label = QLabel()
         logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        logo_label.setMaximumHeight(110)
         logo_label.setAccessibleName("Company logo")
         logo_label.setAccessibleDescription("Logo image loaded from bundled local file")
 
@@ -626,8 +635,8 @@ class MainWindow(QMainWindow):
         if logo_pixmap is not None:
             logo_label.setPixmap(
                 logo_pixmap.scaled(
-                    220,
-                    120,
+                    180,
+                    96,
                     Qt.AspectRatioMode.KeepAspectRatio,
                     Qt.TransformationMode.SmoothTransformation,
                 )
@@ -636,15 +645,61 @@ class MainWindow(QMainWindow):
             logo_label.setText(APP_COMPANY)
         layout.addWidget(logo_label)
 
-        about_text = QTextBrowser()
-        about_text.setOpenExternalLinks(True)
-        about_text.setReadOnly(True)
-        about_text.setAccessibleName("About Easy-LIN details")
-        about_text.setAccessibleDescription(
-            "Version, author, contact, website, and product overview for Easy-LIN."
+        def _make_label(text: str, description: str, point_size: int = 10) -> QLabel:
+            lbl = QLabel(text)
+            lbl.setWordWrap(True)
+            lbl.setTextInteractionFlags(
+                Qt.TextInteractionFlag.TextSelectableByKeyboard
+                | Qt.TextInteractionFlag.TextSelectableByMouse
+            )
+            lbl.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+            # Keep the accessible name equal to the visible content so screen
+            # readers speak the actual information instead of abstract labels.
+            lbl.setAccessibleName(text)
+            lbl.setAccessibleDescription(description)
+            font = lbl.font()
+            font.setPointSize(point_size)
+            lbl.setFont(font)
+            return lbl
+
+        title_label = _make_label(
+            f"{APP_NAME} {APP_VERSION}",
+            "Product name and version.",
+            point_size=13,
         )
-        about_text.setHtml(self._build_about_html())
-        layout.addWidget(about_text)
+        summary_label = _make_label(
+            "An open-source LIN master GUI for Vector VN16xx hardware.",
+            "Product summary description.",
+            point_size=11,
+        )
+        author_label = _make_label(
+            f"Author: {APP_AUTHOR}",
+            "Author information.",
+        )
+        company_label = _make_label(
+            f"Company: {APP_COMPANY}",
+            "Company information.",
+        )
+        copyright_label = _make_label(
+            APP_COPYRIGHT,
+            "Copyright statement.",
+        )
+        email_label = _make_label(
+            f"Email: {APP_CONTACT_EMAIL}",
+            "Support email address.",
+        )
+        website_label = _make_label(
+            f"Website: {APP_WEBSITE}",
+            "Project website URL.",
+        )
+
+        layout.addWidget(title_label)
+        layout.addWidget(summary_label)
+        layout.addWidget(author_label)
+        layout.addWidget(company_label)
+        layout.addWidget(copyright_label)
+        layout.addWidget(email_label)
+        layout.addWidget(website_label)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         buttons.rejected.connect(dialog.reject)
@@ -654,9 +709,9 @@ class MainWindow(QMainWindow):
             close_btn.setAccessibleName("Close About dialog")
             close_btn.setAccessibleDescription("Close the About Easy-LIN dialog.")
         layout.addWidget(buttons)
-        about_text.setFocus(Qt.FocusReason.OtherFocusReason)
+        summary_label.setFocus(Qt.FocusReason.OtherFocusReason)
         if close_btn is not None:
-            dialog.setTabOrder(about_text, close_btn)
+            dialog.setTabOrder(summary_label, close_btn)
 
         dialog.exec()
 
@@ -918,13 +973,20 @@ class MainWindow(QMainWindow):
             self._focus_communication()
 
     @staticmethod
-    def _open_vector_docs() -> None:
-        """Open the public Vector XL Driver Library page in a browser."""
+    def _open_user_manual() -> None:
+        """Open the local GUI user manual in the default browser."""
         import webbrowser
 
-        webbrowser.open(
-            "https://www.vector.com/int/en/products/products-a-z/software/xl-driver-library/"
-        )
+        root = Path(__file__).resolve().parents[2]
+        candidates = [
+            root / "docs" / "_build" / "html" / "index.html",
+            root / "docs" / "index.rst",
+            root / "README.md",
+        ]
+        for path in candidates:
+            if path.exists():
+                webbrowser.open(path.resolve().as_uri())
+                return
 
     # ------------------------------------------------------------------
     # Geometry persistence
