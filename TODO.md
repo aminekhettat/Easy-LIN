@@ -4,6 +4,7 @@ Date: 2026-03-23
 
 ## In Progress
 
+- [ ] Investigate persistent Left-arrow navigation instability (Right arrow temporarily restores navigation, then issue returns after Left).
 - [ ] Add DLL provenance/status message in communication window.
 - [ ] Add runtime integrity preflight check before connect.
 
