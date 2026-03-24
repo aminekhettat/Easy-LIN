@@ -1,6 +1,6 @@
 # Easy-LIN
 
-Current release: 0.8.2
+Current release: 0.8.3
 
 Planned next patch release: 0.8.2
 
