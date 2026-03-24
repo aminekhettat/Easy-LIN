@@ -17,18 +17,27 @@ Atomic features covered:
 - Track persistent status bar fields for LDF issues and communication state
 - Color-code status bar fields for quick issue/health recognition
 - Provide About window metadata with clickable contact links and company logo
+- Traverse expanded tree in depth-first visual order with Down/Up arrow keys
+- Enter first child of an expanded branch on Down; ascend to last visible descendant of the preceding sibling on Up
+- Skip collapsed branch children when navigating with Down/Up
+- Let Right enter the first child of an expanded branch and Left return to its parent
+- Keep real bundled LDF files navigable with deterministic top-level traversal
+- Prevent non-master/slave tree items from retaining an accidental check state
 """
 
 from __future__ import annotations
 
+# pylint: disable=too-many-lines
+
 import os
+from pathlib import Path
 
 import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import QApplication
 
-from src.ldf_parser import parse_ldf_string
+from src.ldf_parser import parse_ldf, parse_ldf_string
 from src.gui.ldf_viewer import LDFViewer
 import src.gui.ldf_viewer as ldf_viewer
 import src.gui.main_window_qt as main_window_qt
@@ -100,16 +109,39 @@ def test_qt_hierarchy_view_contains_inline_values(qapp: QApplication, sample_ldf
     assert "Protocol version: 2.1" in header_rows
     assert "Baudrate: 19.2 kbps" in header_rows
 
-    encodings = None
-    for i in range(root.childCount()):
-        if root.child(i).text(0).startswith("Encoding types"):
-            encodings = root.child(i)
-            break
-    assert encodings is not None
-    assert encodings.childCount() >= 1
-
     top_level_rows = {root.child(i).text(0) for i in range(root.childCount())}
     assert not any(text.startswith("Signals (") for text in top_level_rows)
+    assert not any(text.startswith("Encoding types (") for text in top_level_rows)
+    assert not any(text.startswith("Signal representations (") for text in top_level_rows)
+    assert not any(text.startswith("Node attributes (") for text in top_level_rows)
+
+
+def test_qt_hierarchy_embeds_node_attributes_inside_each_node(
+    qapp: QApplication,
+    sample_ldf_text: str,
+) -> None:
+    """Ensure node attributes are shown under each node instead of a separate top-level section."""
+    ldf = parse_ldf_string(sample_ldf_text)
+    viewer = LDFViewer(ldf)
+    root = viewer._tree.topLevelItem(0)
+
+    nodes = root.child(1)
+    assert nodes.text(0) == "Nodes"
+
+    master = nodes.child(0)
+    assert master.text(0).startswith("Master (1):")
+
+    slaves = nodes.child(1)
+    assert slaves.text(0) == "Slaves (2)"
+    s1 = slaves.child(0)
+    assert s1.text(0) == "S1"
+
+    rows = {s1.child(i).text(0) for i in range(s1.childCount())}
+    assert "LIN protocol: 2.1" in rows
+    assert "Configured NAD: 1" in rows
+    assert "Initial NAD: 1" in rows
+    assert "Configurable frames" in rows
+    assert "Related frames" in rows
 
 
 def test_qt_hierarchy_slave_contains_related_frames_and_signal_encoding(
@@ -130,7 +162,7 @@ def test_qt_hierarchy_slave_contains_related_frames_and_signal_encoding(
 
     slaves = None
     for i in range(nodes.childCount()):
-        if nodes.child(i).text(0) == "Slaves":
+        if nodes.child(i).text(0).startswith("Slaves ("):
             slaves = nodes.child(i)
             break
     assert slaves is not None
@@ -142,11 +174,16 @@ def test_qt_hierarchy_slave_contains_related_frames_and_signal_encoding(
             break
     assert s1 is not None
 
-    related_frames = s1.child(0)
-    assert related_frames.text(0) == "Related frames"
+    related_frames = None
+    for i in range(s1.childCount()):
+        if s1.child(i).text(0) == "Related frames":
+            related_frames = s1.child(i)
+            break
+    assert related_frames is not None
     frame_names = {
         related_frames.child(i).text(0).split(":", 1)[0] for i in range(related_frames.childCount())
     }
+
     assert "F1" in frame_names
 
     f1_item = None
@@ -154,6 +191,7 @@ def test_qt_hierarchy_slave_contains_related_frames_and_signal_encoding(
         if related_frames.child(i).text(0).startswith("F1:"):
             f1_item = related_frames.child(i)
             break
+
     assert f1_item is not None
 
     for i in range(f1_item.childCount()):
@@ -354,7 +392,9 @@ def test_qt_tree_toggle_announcements_reach_main_window_event_channel(
 
     events: list[str] = []
     monkeypatch.setattr(
-        window, "_announce_event", lambda message, timeout_ms=5000: events.append(message)
+        window,
+        "_announce_event",
+        lambda message, timeout_ms=5000, assertive=False: events.append(message),
     )
 
     root = viewer._tree.topLevelItem(0)
@@ -435,6 +475,418 @@ def test_qt_tree_right_key_expands_without_forcing_child_navigation(
     assert nodes.isExpanded()
 
 
+def test_qt_tree_down_key_skips_collapsed_branch_children(
+    qapp: QApplication,
+    sample_ldf_text: str,
+) -> None:
+    """Ensure Down skips past collapsed branches and moves to the next sibling."""
+    ldf = parse_ldf_string(sample_ldf_text)
+    viewer = LDFViewer(ldf)
+    viewer.show()
+
+    root = viewer._tree.topLevelItem(0)
+    nodes = root.child(1)
+    diagnostics = root.child(2)
+    schedules = root.child(3)
+
+    # Collapse all intermediate sections so Down moves between siblings without
+    # descending into any expanded subtree.
+    viewer._tree.collapseItem(nodes)
+    viewer._tree.collapseItem(diagnostics)
+    viewer._tree.collapseItem(schedules)
+    viewer._tree.setCurrentItem(nodes)
+    qapp.processEvents()
+
+    down = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Down, Qt.KeyboardModifier.NoModifier)
+
+    QApplication.sendEvent(viewer._tree, down)
+    qapp.processEvents()
+    assert viewer._tree.currentItem() is diagnostics
+
+    QApplication.sendEvent(viewer._tree, down)
+    qapp.processEvents()
+    assert viewer._tree.currentItem() is schedules
+
+
+def test_qt_tree_up_key_returns_to_previous_collapsed_sibling(
+    qapp: QApplication,
+    sample_ldf_text: str,
+) -> None:
+    """Ensure Up returns to the collapsed previous sibling (which is itself its last descendant)."""
+    ldf = parse_ldf_string(sample_ldf_text)
+    viewer = LDFViewer(ldf)
+    viewer.show()
+
+    root = viewer._tree.topLevelItem(0)
+    diagnostics = root.child(2)
+    schedules = root.child(3)
+
+    # Collapse diagnostics so _last_visible_descendant returns diagnostics itself.
+    viewer._tree.collapseItem(diagnostics)
+    viewer._tree.setCurrentItem(schedules)
+    qapp.processEvents()
+
+    up = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Up, Qt.KeyboardModifier.NoModifier)
+    QApplication.sendEvent(viewer._tree, up)
+    qapp.processEvents()
+
+    assert viewer._tree.currentItem() is diagnostics
+
+
+def test_qt_tree_down_key_enters_first_child_of_expanded_branch(
+    qapp: QApplication,
+    sample_ldf_text: str,
+) -> None:
+    """Ensure Down enters the first child of an expanded branch (depth-first descent)."""
+    ldf = parse_ldf_string(sample_ldf_text)
+    viewer = LDFViewer(ldf)
+    viewer.show()
+
+    root = viewer._tree.topLevelItem(0)
+    header = root.child(0)  # "Header" — expanded after _populate
+    first_header_child = header.child(0)  # "Protocol version: 2.1"
+
+    assert header.isExpanded()
+    viewer._tree.setCurrentItem(header)
+    qapp.processEvents()
+
+    down = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Down, Qt.KeyboardModifier.NoModifier)
+    QApplication.sendEvent(viewer._tree, down)
+    qapp.processEvents()
+
+    assert viewer._tree.currentItem() is first_header_child
+
+
+def test_qt_tree_up_key_descends_into_last_visible_descendant_of_expanded_sibling(
+    qapp: QApplication,
+    sample_ldf_text: str,
+) -> None:
+    """Ensure Up lands on the last visible descendant of the preceding expanded sibling."""
+    ldf = parse_ldf_string(sample_ldf_text)
+    viewer = LDFViewer(ldf)
+    viewer.show()
+
+    root = viewer._tree.topLevelItem(0)
+    header = root.child(0)  # expanded, its children are all leaf nodes
+    nodes = root.child(1)
+    last_header_child = header.child(header.childCount() - 1)  # "Channel name: CABIN"
+
+    assert header.isExpanded()
+    viewer._tree.setCurrentItem(nodes)
+    qapp.processEvents()
+
+    up = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Up, Qt.KeyboardModifier.NoModifier)
+    QApplication.sendEvent(viewer._tree, up)
+    qapp.processEvents()
+
+    # Up from "Nodes" should land on the last visible descendant of "Header"
+    assert viewer._tree.currentItem() is last_header_child
+
+
+def test_qt_tree_up_key_goes_to_parent_when_no_previous_sibling(
+    qapp: QApplication,
+    sample_ldf_text: str,
+) -> None:
+    """Ensure Up moves to the parent branch when the item has no previous sibling."""
+    ldf = parse_ldf_string(sample_ldf_text)
+    viewer = LDFViewer(ldf)
+    viewer.show()
+
+    root = viewer._tree.topLevelItem(0)
+    header = root.child(0)
+    first_header_child = header.child(0)  # no previous sibling
+
+    viewer._tree.setCurrentItem(first_header_child)
+    qapp.processEvents()
+
+    up = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Up, Qt.KeyboardModifier.NoModifier)
+    QApplication.sendEvent(viewer._tree, up)
+    qapp.processEvents()
+
+    assert viewer._tree.currentItem() is header
+
+
+def test_qt_tree_right_key_enters_first_child_when_branch_is_expanded(
+    qapp: QApplication,
+    sample_ldf_text: str,
+) -> None:
+    """Ensure Right on an expanded branch moves into its first child for explicit descent."""
+    ldf = parse_ldf_string(sample_ldf_text)
+    viewer = LDFViewer(ldf)
+    viewer.show()
+
+    root = viewer._tree.topLevelItem(0)
+    diagnostics = root.child(2)
+    first_diagnostic = diagnostics.child(0)
+
+    assert diagnostics.isExpanded()
+    viewer._tree.setCurrentItem(diagnostics)
+    qapp.processEvents()
+
+    right = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Right, Qt.KeyboardModifier.NoModifier)
+    QApplication.sendEvent(viewer._tree, right)
+    qapp.processEvents()
+
+    assert viewer._tree.currentItem() is first_diagnostic
+
+
+def test_qt_tree_left_key_on_child_returns_to_parent_branch(
+    qapp: QApplication,
+    sample_ldf_text: str,
+) -> None:
+    """Ensure Left on a child row moves back to its parent branch."""
+    ldf = parse_ldf_string(sample_ldf_text)
+    viewer = LDFViewer(ldf)
+    viewer.show()
+
+    root = viewer._tree.topLevelItem(0)
+    diagnostics = root.child(2)
+    first_diagnostic = diagnostics.child(0)
+    first_leaf = first_diagnostic.child(0)
+
+    viewer._tree.setCurrentItem(first_leaf)
+    qapp.processEvents()
+
+    left = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Left, Qt.KeyboardModifier.NoModifier)
+    QApplication.sendEvent(viewer._tree, left)
+    qapp.processEvents()
+
+    assert viewer._tree.currentItem() is first_diagnostic
+
+
+@pytest.mark.parametrize(
+    "ldf_path",
+    sorted(Path("LDF").glob("*.ldf")),
+    ids=lambda path: path.name,
+)
+def test_real_ldf_top_level_navigation_is_deterministic(
+    qapp: QApplication,
+    ldf_path: Path,
+) -> None:
+    """Ensure bundled LDF files keep top-level traversal stable for screen readers."""
+    ldf = parse_ldf(str(ldf_path))
+    viewer = LDFViewer(ldf)
+    viewer.show()
+
+    root = viewer._tree.topLevelItem(0)
+    assert root.childCount() >= 4
+
+    nodes = root.child(1)
+    diagnostics = root.child(2)
+    schedules = root.child(3)
+
+    # Collapse all intermediate sections so Down skips their content and moves
+    # between top-level siblings deterministically on every LDF file.
+    viewer._tree.collapseItem(nodes)
+    viewer._tree.collapseItem(diagnostics)
+    viewer._tree.collapseItem(schedules)
+    viewer._tree.setCurrentItem(nodes)  # set AFTER collapseItem calls to avoid focus drift
+    qapp.processEvents()
+
+    down = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Down, Qt.KeyboardModifier.NoModifier)
+
+    QApplication.sendEvent(viewer._tree, down)
+    qapp.processEvents()
+    assert viewer._tree.currentItem() is diagnostics
+
+    QApplication.sendEvent(viewer._tree, down)
+    qapp.processEvents()
+    assert viewer._tree.currentItem() is schedules
+
+
+def test_real_cpc_collapse_nodes_then_down_reaches_diagnostics_directly(
+    qapp: QApplication,
+) -> None:
+    """Ensure one Down key reaches diagnostics right after collapsing Nodes on CPC LDF."""
+    ldf_candidates = sorted(Path("LDF").glob("*.ldf"))
+    if not ldf_candidates:
+        pytest.skip("No local LDF files available for real-file navigation test")
+    ldf_path = ldf_candidates[0]
+    ldf = parse_ldf(str(ldf_path))
+    viewer = LDFViewer(ldf)
+    viewer.show()
+
+    root = viewer._tree.topLevelItem(0)
+    nodes = root.child(1)
+    diagnostics = root.child(2)
+    assert nodes.text(0) == "Nodes"
+    assert diagnostics.text(0).startswith("Diagnostic frames")
+
+    # Reproduce mixed navigation: focus a deep node entry, then collapse Nodes.
+    slaves_root = nodes.child(1)
+    first_slave = slaves_root.child(0)
+    viewer._tree.setCurrentItem(first_slave)
+    qapp.processEvents()
+
+    viewer._tree.collapseItem(nodes)
+    qapp.processEvents()
+
+    down = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Down, Qt.KeyboardModifier.NoModifier)
+    QApplication.sendEvent(viewer._tree, down)
+    qapp.processEvents()
+
+    assert viewer._tree.currentItem() is diagnostics
+
+
+def test_qt_tree_left_key_on_true_top_level_item_does_not_lose_position(
+    qapp: QApplication,
+    sample_ldf_text: str,
+) -> None:
+    """Left on the true top-level root (no Qt parent) must be consumed and stay on that item.
+
+    topLevelItem(0) has parent() == None.  Before this fix the Left key fell
+    through to Qt's native handler which could silently move focus elsewhere.
+    """
+    ldf = parse_ldf_string(sample_ldf_text)
+    viewer = LDFViewer(ldf)
+    viewer.show()
+
+    root = viewer._tree.topLevelItem(0)
+    assert root.parent() is None, "root must have no parent for this scenario"
+
+    # Collapse root so Left's 'already collapsed' branch fires (no parent branch).
+    viewer._tree.collapseItem(root)
+    viewer._tree.setCurrentItem(root)
+    qapp.processEvents()
+
+    left = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Left, Qt.KeyboardModifier.NoModifier)
+    QApplication.sendEvent(viewer._tree, left)
+    qapp.processEvents()
+
+    # Must stay on root — nothing to navigate to.
+    assert viewer._tree.currentItem() is root
+
+
+def test_qt_tree_left_key_reanchor_fires_after_collapse(
+    qapp: QApplication,
+    sample_ldf_text: str,
+) -> None:
+    """After Left collapse the deferred re-anchor leaves current item on the collapsed node."""
+    ldf = parse_ldf_string(sample_ldf_text)
+    viewer = LDFViewer(ldf)
+    viewer.show()
+
+    root = viewer._tree.topLevelItem(0)
+    nodes = root.child(1)
+    viewer._tree.expandItem(nodes)
+    viewer._tree.setCurrentItem(nodes)
+    qapp.processEvents()
+
+    left = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Left, Qt.KeyboardModifier.NoModifier)
+    QApplication.sendEvent(viewer._tree, left)
+    qapp.processEvents()  # processEvents fires the QTimer.singleShot(0, ...) callback
+
+    assert not nodes.isExpanded()
+    assert viewer._tree.currentItem() is nodes
+
+
+def test_qt_tree_after_left_collapse_down_reaches_next_sibling(
+    qapp: QApplication,
+    sample_ldf_text: str,
+) -> None:
+    """After Left-collapsing a section, Down must navigate to the next sibling section.
+
+    This is the primary use-case regression: blind users pressing Left to close
+    a section must be able to immediately press Down to reach the next section.
+    """
+    ldf = parse_ldf_string(sample_ldf_text)
+    viewer = LDFViewer(ldf)
+    viewer.show()
+
+    root = viewer._tree.topLevelItem(0)
+    nodes = root.child(1)
+    diagnostics = root.child(2)
+
+    # Start deep inside Nodes, then Left-collapse.
+    viewer._tree.setCurrentItem(nodes)
+    viewer._tree.expandItem(nodes)
+    qapp.processEvents()
+
+    left = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Left, Qt.KeyboardModifier.NoModifier)
+    QApplication.sendEvent(viewer._tree, left)
+    qapp.processEvents()  # fires the deferred re-anchor
+
+    assert not nodes.isExpanded()
+
+    down = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Down, Qt.KeyboardModifier.NoModifier)
+    QApplication.sendEvent(viewer._tree, down)
+    qapp.processEvents()
+
+    assert viewer._tree.currentItem() is diagnostics
+
+
+def test_qt_tree_left_right_left_sequence_cancels_deferred_reanchor(
+    qapp: QApplication,
+    sample_ldf_text: str,
+) -> None:
+    """Ensure rapid Left-Right-Left key sequences don't lose focus due to deferred re-anchor races.
+
+    Regression test for: when Left schedules a deferred re-anchor callback,
+    and Right is pressed before the callback fires, the Right handler should
+    successfully navigate without interference from the pending deferred callback.
+    """
+    ldf = parse_ldf_string(sample_ldf_text)
+    viewer = LDFViewer(ldf)
+    viewer.show()
+
+    root = viewer._tree.topLevelItem(0)
+    nodes = root.child(1)
+
+    # Expand Nodes first so it can be collapsed by Left.
+    viewer._tree.expandItem(nodes)
+    viewer._tree.setCurrentItem(nodes)
+    qapp.processEvents()
+
+    left = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Left, Qt.KeyboardModifier.NoModifier)
+    right = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Right, Qt.KeyboardModifier.NoModifier)
+
+    # Press Left to collapse Nodes and schedule deferred re-anchor.
+    QApplication.sendEvent(viewer._tree, left)
+    # Do NOT process events yet — deferred callback is scheduled but not fired.
+
+    # Press Right before deferred re-anchor fires.
+    # This should be handled correctly (Right should expand Nodes again).
+    QApplication.sendEvent(viewer._tree, right)
+
+    # Now process events — deferred re-anchor callback should be cancelled by Right's key press.
+    qapp.processEvents()
+
+    # Current item should still be on Nodes, and it should be expanded by Right.
+    assert viewer._tree.currentItem() is nodes
+    assert nodes.isExpanded()
+
+    # Press Left again to collapse — should work correctly.
+    QApplication.sendEvent(viewer._tree, left)
+    qapp.processEvents()
+
+    assert not nodes.isExpanded()
+    assert viewer._tree.currentItem() is nodes
+
+
+def test_qt_tree_right_key_on_leaf_node_does_not_lose_focus(
+    qapp: QApplication,
+    sample_ldf_text: str,
+) -> None:
+    """Right arrow on a leaf (no children) must be consumed without losing focus."""
+    ldf = parse_ldf_string(sample_ldf_text)
+    viewer = LDFViewer(ldf)
+    viewer.show()
+
+    root = viewer._tree.topLevelItem(0)
+    header = root.child(0)
+    leaf = header.child(0)  # first header property — leaf node
+
+    viewer._tree.setCurrentItem(leaf)
+    qapp.processEvents()
+
+    right = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Right, Qt.KeyboardModifier.NoModifier)
+    consumed = QApplication.sendEvent(viewer._tree, right)
+    qapp.processEvents()
+
+    assert consumed
+    assert viewer._tree.currentItem() is leaf  # stays on the leaf
+
+
 def test_qt_tree_space_toggles_slave_check_state(
     qapp: QApplication,
     sample_ldf_text: str,
@@ -509,6 +961,65 @@ def test_qt_tree_space_is_ignored_for_non_checkable_row(
     non_checkable.setFlags(non_checkable.flags() & ~Qt.ItemFlag.ItemIsUserCheckable)
 
     assert viewer._toggle_current_checkable_node(non_checkable) is False
+
+
+def test_qt_tree_non_master_slave_item_check_state_is_reverted(
+    qapp: QApplication,
+    sample_ldf_text: str,
+) -> None:
+    """Ensure any accidental check state on a non-master/slave item is silently reverted."""
+    ldf = parse_ldf_string(sample_ldf_text)
+    viewer = LDFViewer(ldf)
+
+    # A regular property leaf (e.g. "Protocol version: 2.1") should never stay checked.
+    root = viewer._tree.topLevelItem(0)
+    header = root.child(0)
+    proto_row = header.child(0)  # "Protocol version: 2.1"
+
+    # Force a check state on a non-master/slave item (simulates an accidental click).
+    proto_row.setCheckState(0, Qt.CheckState.Checked)
+    qapp.processEvents()
+
+    # _on_node_item_changed should have reverted it immediately.
+    assert proto_row.checkState(0) == Qt.CheckState.Unchecked
+
+
+def test_navigate_from_master_to_slaves(
+    qapp: QApplication,
+    sample_ldf_text: str,
+) -> None:
+    """Verify that pressing Down from Master navigates to Slaves, not diagnostic frames."""
+    ldf = parse_ldf_string(sample_ldf_text)
+    viewer = LDFViewer(ldf)
+
+    root = viewer._tree.topLevelItem(0)
+    nodes = root.child(1)  # "Nodes" is 2nd top-level item (after Header)
+    assert nodes.text(0) == "Nodes"
+
+    master = nodes.child(0)
+    assert "Master" in master.text(0)
+
+    slaves = nodes.child(1)
+    assert slaves.text(0).startswith("Slaves (")
+
+    # Collapse Master and verify it's still on Master
+    viewer._tree.setCurrentItem(master)
+    event = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Left, Qt.KeyboardModifier.NoModifier)
+    QApplication.sendEvent(viewer._tree, event)
+    qapp.processEvents()
+
+    # Verify Master is still selected after collapse
+    assert viewer._tree.currentItem() == master
+    assert not master.isExpanded()
+
+    # Now navigate Down from collapsed Master
+    event = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Down, Qt.KeyboardModifier.NoModifier)
+    QApplication.sendEvent(viewer._tree, event)
+    qapp.processEvents()
+
+    # Should navigate to Slaves (next sibling), not jump to Diagnostic frames
+    assert viewer._tree.currentItem() == slaves
+    assert slaves.isExpanded()
 
 
 def test_qt_tree_space_announces_when_selection_is_locked(

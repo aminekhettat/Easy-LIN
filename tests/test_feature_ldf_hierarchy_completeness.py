@@ -1,16 +1,13 @@
 """
 Atomic features covered:
-- Display Protected ID (PID) with parity bits for every frame section
-- Show periodicity derived from all schedule tables under each frame
-- Show TX/RX direction at frame level relative to the viewing node
-- Show TX/RX direction at signal level relative to the viewing node
-- Expose full signal attributes (publisher, subscribers, initial value, encoding)
-  in EVERY frame section, not only in the Nodes section
+- Display Protected ID (PID) under node-related and diagnostic frame sections
+- Show periodicity derived from all schedule tables under related/diagnostic frames
+- Show Publisher and TX/RX direction at frame level only (not at signal level)
+- Expose signal attributes (subscribers, initial value, size, encoding) without
+  Publisher/Direction duplication under Nodes -> Slaves -> Related frames
 - Include diagnostic frames in slave "Related frames" when the slave is involved
-- Exclude diagnostic frames from the generic "Frames (N)" section
-  (they have their own dedicated "Diagnostic frames" section)
-- Master "Published frames" exposes Frame ID, Protected ID, direction, periodicity
-- Signal encoding and logical/physical details reachable under every frame section
+- Keep diagnostic frames in their dedicated "Diagnostic frames" section only
+- Signal encoding and logical/physical details reachable under related/diagnostic frames
 """
 
 from __future__ import annotations
@@ -102,21 +99,13 @@ def test_lin_protected_id_known_values() -> None:
     assert LDFViewer._lin_protected_id(0x01) == 0xC1
 
 
-def test_lin_protected_id_shown_in_frames_section(qapp: QApplication) -> None:
-    """Verify Protected ID appears in the non-diagnostic Frames section."""
+def test_no_top_level_generic_frames_section(qapp: QApplication) -> None:
+    """Verify there is no redundant top-level non-diagnostic Frames section."""
     ldf = parse_ldf_string(FULL_LDF)
     viewer = LDFViewer(ldf)
     root = viewer._tree.topLevelItem(0)
 
-    frames_section = _find_child(root, "Frames (")
-    assert frames_section is not None
-
-    f1 = _find_child(frames_section, "F1")
-    assert f1 is not None
-    props = _children_texts(f1)
-
-    assert "Frame ID: 0x10 (16 decimal)" in props
-    assert "Protected ID (PID): 0x50 (80 decimal)" in props
+    assert _find_child(root, "Frames (") is None
 
 
 def test_lin_protected_id_shown_in_slave_related_frames(qapp: QApplication) -> None:
@@ -134,21 +123,6 @@ def test_lin_protected_id_shown_in_slave_related_frames(qapp: QApplication) -> N
     props = _children_texts(f1)
     assert "Protected ID (PID): 0x50 (80 decimal)" in props
     assert "Frame ID: 0x10 (16 decimal)" in props
-
-
-def test_lin_protected_id_shown_in_master_published_frames(qapp: QApplication) -> None:
-    """Verify Protected ID appears under Master → Published frames."""
-    ldf = parse_ldf_string(FULL_LDF)
-    viewer = LDFViewer(ldf)
-    root = viewer._tree.topLevelItem(0)
-    nodes = _find_child(root, "Nodes")
-    master = _find_child(nodes, "Master:")
-    pub = _find_child(master, "Published frames")
-    f1 = _find_child(pub, "F1:")
-    assert f1 is not None
-
-    props = _children_texts(f1)
-    assert "Protected ID (PID): 0x50 (80 decimal)" in props
 
 
 def test_lin_protected_id_shown_in_diagnostic_frames(qapp: QApplication) -> None:
@@ -172,12 +146,15 @@ def test_lin_protected_id_shown_in_diagnostic_frames(qapp: QApplication) -> None
 
 
 def test_periodicity_shown_for_multi_table_frame(qapp: QApplication) -> None:
-    """Frame in multiple schedule tables shows all delays with table names."""
+    """Related frame in multiple schedule tables shows all delays with table names."""
     ldf = parse_ldf_string(FULL_LDF)
     viewer = LDFViewer(ldf)
     root = viewer._tree.topLevelItem(0)
-    frames_section = _find_child(root, "Frames (")
-    f1 = _find_child(frames_section, "F1")
+    nodes = _find_child(root, "Nodes")
+    slaves = _find_child(nodes, "Slaves")
+    s1 = _find_child(slaves, "S1")
+    rel = _find_child(s1, "Related frames")
+    f1 = _find_child(rel, "F1:")
     props = _children_texts(f1)
 
     # F1 appears in Main (10 ms) and Fast (5 ms)
@@ -222,19 +199,6 @@ def test_periodicity_not_scheduled_for_slaved_resp_frame(qapp: QApplication) -> 
 # ---------------------------------------------------------------------------
 
 
-def test_direction_tx_for_master_published_frame(qapp: QApplication) -> None:
-    """Master → Published frames → frame shows Master TX direction."""
-    ldf = parse_ldf_string(FULL_LDF)
-    viewer = LDFViewer(ldf)
-    root = viewer._tree.topLevelItem(0)
-    nodes = _find_child(root, "Nodes")
-    master = _find_child(nodes, "Master:")
-    pub = _find_child(master, "Published frames")
-    f1 = _find_child(pub, "F1:")
-    props = _children_texts(f1)
-    assert any("Direction" in p and "TX" in p and "Master" in p for p in props)
-
-
 def test_direction_rx_for_slave_subscribing_to_frame(qapp: QApplication) -> None:
     """Slave → Related frames → master-published frame shows RX direction."""
     ldf = parse_ldf_string(FULL_LDF)
@@ -267,12 +231,16 @@ def test_direction_tx_for_slave_publishing_frame(qapp: QApplication) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Direction — signal level
+# Publisher and Direction — frame level (not signal level)
 # ---------------------------------------------------------------------------
 
 
-def test_signal_direction_rx_when_slave_is_subscriber(qapp: QApplication) -> None:
-    """Signal under slave shows RX when the slave is a subscriber."""
+def test_signal_shows_attributes_without_publisher_direction(qapp: QApplication) -> None:
+    """Signals under slave show bit offset, size, subscribers but not Publisher/Direction.
+
+    Publisher and Direction info is shown at the frame level to avoid redundancy,
+    since all signals in a frame have the same publisher as the frame.
+    """
     ldf = parse_ldf_string(FULL_LDF)
     viewer = LDFViewer(ldf)
     root = viewer._tree.topLevelItem(0)
@@ -285,14 +253,17 @@ def test_signal_direction_rx_when_slave_is_subscriber(qapp: QApplication) -> Non
     assert s1_sig is not None
 
     props = _children_texts(s1_sig)
-    assert any("Direction" in p and "RX" in p for p in props)
-    assert "Publisher: M" in props
-    assert "Subscribers: S1" in props
+    # Signal should have these properties
     assert "Size: 8 bit" in props
+    assert "Subscribers: S1" in props
+    assert "Bit offset: 0" in props
+    # But NOT Publisher or Direction (those are at frame level)
+    assert not any("Publisher" in p for p in props), "Publisher should not appear at signal level"
+    assert not any("Direction" in p for p in props), "Direction should not appear at signal level"
 
 
-def test_signal_direction_tx_when_slave_is_publisher(qapp: QApplication) -> None:
-    """Signal under slave shows TX when the slave is the publisher."""
+def test_frame_shows_publisher_and_direction_under_slave(qapp: QApplication) -> None:
+    """Frame under slave shows Publisher and Direction (not duplicated at signal level)."""
     ldf = parse_ldf_string(FULL_LDF)
     viewer = LDFViewer(ldf)
     root = viewer._tree.topLevelItem(0)
@@ -300,46 +271,54 @@ def test_signal_direction_tx_when_slave_is_publisher(qapp: QApplication) -> None
     slaves = _find_child(nodes, "Slaves")
     s1 = _find_child(slaves, "S1")
     rel = _find_child(s1, "Related frames")
-    f2 = _find_child(rel, "F2:")
-    s3_sig = _find_child(f2, "S3")
-    assert s3_sig is not None
+    f1 = _find_child(rel, "F1:")
+    assert f1 is not None
 
-    props = _children_texts(s3_sig)
-    assert any("Direction" in p and "TX" in p for p in props)
-    assert "Publisher: S1" in props
-    assert "Size: 16 bit" in props
+    props = _children_texts(f1)
+    # Frame should have Publisher and Direction
+    assert any("Publisher" in p for p in props), f"Frame should show Publisher. Got: {props}"
+    assert any("Direction" in p and "RX" in p for p in props), (
+        f"Frame should show RX direction. Got: {props}"
+    )
 
 
 # ---------------------------------------------------------------------------
-# Full signal details in the generic Frames section
+# Full signal details under Related frames
 # ---------------------------------------------------------------------------
 
 
-def test_frames_section_exposes_full_signal_attributes(qapp: QApplication) -> None:
-    """Non-diagnostic Frames section must show all signal attributes, not just bit offset."""
+def test_related_frames_expose_full_signal_attributes(qapp: QApplication) -> None:
+    """Related frames must show all signal attributes, not just bit offset."""
     ldf = parse_ldf_string(FULL_LDF)
     viewer = LDFViewer(ldf)
     root = viewer._tree.topLevelItem(0)
-    frames_section = _find_child(root, "Frames (")
-    f1 = _find_child(frames_section, "F1")
+    nodes = _find_child(root, "Nodes")
+    slaves = _find_child(nodes, "Slaves")
+    s1 = _find_child(slaves, "S1")
+    rel = _find_child(s1, "Related frames")
+    f1 = _find_child(rel, "F1:")
     s1_sig = _find_child(f1, "S1")
-    assert s1_sig is not None, "Signal S1 must be directly under F1 in the Frames section"
+    assert s1_sig is not None, "Signal S1 must be directly under F1 in Related frames"
 
     props = _children_texts(s1_sig)
     assert "Bit offset: 0" in props
     assert "Size: 8 bit" in props
     assert "Initial value: 0" in props
-    assert "Publisher: M" in props
     assert "Subscribers: S1" in props
+    # Publisher and Direction are shown at frame level, not signal level
+    assert not any("Publisher" in p for p in props), "Publisher should not appear at signal level"
 
 
-def test_frames_section_exposes_signal_encoding(qapp: QApplication) -> None:
-    """Signal in Frames section must include the encoding subtree."""
+def test_related_frames_expose_signal_encoding(qapp: QApplication) -> None:
+    """Signal in Related frames must include the encoding subtree."""
     ldf = parse_ldf_string(FULL_LDF)
     viewer = LDFViewer(ldf)
     root = viewer._tree.topLevelItem(0)
-    frames_section = _find_child(root, "Frames (")
-    f1 = _find_child(frames_section, "F1")
+    nodes = _find_child(root, "Nodes")
+    slaves = _find_child(nodes, "Slaves")
+    s1 = _find_child(slaves, "S1")
+    rel = _find_child(s1, "Related frames")
+    f1 = _find_child(rel, "F1:")
     s1_sig = _find_child(f1, "S1")
 
     enc = _find_child(s1_sig, "Encoding: EncS1")
@@ -372,19 +351,13 @@ def test_diagnostic_frames_included_in_slave_related_frames(qapp: QApplication) 
     assert "SlaveResp" in frame_names, "SlaveResp (0x3D) must appear in S1 related frames"
 
 
-def test_diagnostic_frames_excluded_from_generic_frames_section(qapp: QApplication) -> None:
-    """The generic Frames section must NOT list diagnostic frames (they have their own section)."""
+def test_diagnostic_frames_not_duplicated_in_top_level_frames_section(qapp: QApplication) -> None:
+    """No top-level generic Frames section is rendered, so diagnostics are never duplicated there."""
     ldf = parse_ldf_string(FULL_LDF)
     viewer = LDFViewer(ldf)
     root = viewer._tree.topLevelItem(0)
-    frames_section = _find_child(root, "Frames (")
-    assert frames_section is not None
 
-    frame_names = {
-        frames_section.child(i).text(0).split(":", 1)[0] for i in range(frames_section.childCount())
-    }
-    assert "MasterReq" not in frame_names
-    assert "SlaveResp" not in frame_names
+    assert _find_child(root, "Frames (") is None
 
 
 def test_diagnostic_frames_section_has_full_properties(qapp: QApplication) -> None:
@@ -401,51 +374,3 @@ def test_diagnostic_frames_section_has_full_properties(qapp: QApplication) -> No
     assert "Protected ID (PID): 0x3C (60 decimal)" in props
     assert "Publisher: M" in props
     assert any("Periodicity" in p for p in props)
-
-
-# ---------------------------------------------------------------------------
-# Master Published frames — full properties
-# ---------------------------------------------------------------------------
-
-
-def test_master_published_frames_have_full_frame_properties(qapp: QApplication) -> None:
-    """Master → Published frames must show Frame ID, Protected ID, Publisher, Periodicity."""
-    ldf = parse_ldf_string(FULL_LDF)
-    viewer = LDFViewer(ldf)
-    root = viewer._tree.topLevelItem(0)
-    nodes = _find_child(root, "Nodes")
-    master = _find_child(nodes, "Master:")
-    assert master is not None
-    pub = _find_child(master, "Published frames")
-    assert pub is not None
-
-    f1 = _find_child(pub, "F1:")
-    assert f1 is not None
-    props = _children_texts(f1)
-
-    assert "Frame ID: 0x10 (16 decimal)" in props
-    assert "Protected ID (PID): 0x50 (80 decimal)" in props
-    assert "Publisher: M" in props
-    assert any("Periodicity" in p for p in props)
-    assert any("Direction" in p for p in props)
-
-
-def test_master_published_frames_have_full_signal_details(qapp: QApplication) -> None:
-    """Signals under Master → Published frames show all attributes including encoding."""
-    ldf = parse_ldf_string(FULL_LDF)
-    viewer = LDFViewer(ldf)
-    root = viewer._tree.topLevelItem(0)
-    nodes = _find_child(root, "Nodes")
-    master = _find_child(nodes, "Master:")
-    pub = _find_child(master, "Published frames")
-    f1 = _find_child(pub, "F1:")
-    s1_sig = _find_child(f1, "S1")
-    assert s1_sig is not None
-
-    props = _children_texts(s1_sig)
-    assert "Bit offset: 0" in props
-    assert "Size: 8 bit" in props
-    assert "Initial value: 0" in props
-    assert "Publisher: M" in props
-    # Direction: S1 subscriber, context=master "M" → master is the publisher
-    assert any("Direction" in p and "TX" in p for p in props)

@@ -196,4 +196,3 @@ def _encoding_summary(encoding: LDFEncodingType) -> str:
         flags.append("ASCII")
     suffix = f", formats: {', '.join(flags)}" if flags else ""
     return f"{logical_count} logical, {physical_count} physical{suffix}"
-

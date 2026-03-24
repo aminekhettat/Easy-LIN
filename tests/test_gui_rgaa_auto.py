@@ -34,6 +34,7 @@ def qapp():
 # RGAAAutoComplianceReport tests
 # ---------------------------------------------------------------------------
 
+
 class TestRGAAAutoComplianceReport:
     def test_percentage_zero_total(self):
         report = RGAAAutoComplianceReport(passed=0, total=0)
@@ -61,6 +62,7 @@ class TestRGAAAutoComplianceReport:
 # evaluate_main_window_automatic_rgaa tests
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def main_window_with_ldf(qapp):
     """Create a MainWindow with a loaded LDF for full RGAA evaluation."""
@@ -71,10 +73,12 @@ def main_window_with_ldf(qapp):
         MockMaster.list_lin_channels = MagicMock(return_value=[])
 
         from src.gui.main_window_qt import MainWindow
+
         win = MainWindow()
 
         # Load an LDF to populate the viewer and comm panel
         from src.ldf_parser import parse_ldf_string
+
         ldf_text = """
         LIN_description_file ;
         LIN_protocol_version = "2.1" ;
@@ -88,6 +92,7 @@ def main_window_with_ldf(qapp):
         ldf = parse_ldf_string(ldf_text)
 
         from src.gui.ldf_viewer import LDFViewer
+
         viewer = LDFViewer(ldf)
         win.setCentralWidget(viewer)
         win._comm_window.load_ldf(ldf)
@@ -113,6 +118,7 @@ class TestEvaluateWithLegacyFallback:
             MockMaster.list_lin_channels = MagicMock(return_value=[])
 
             from src.gui.main_window_qt import MainWindow
+
             win = MainWindow()
 
             # Remove comm_window and add comm_panel directly.
@@ -137,6 +143,7 @@ class TestEvaluateWithMissingTree:
             MockMaster.list_lin_channels = MagicMock(return_value=[])
 
             from src.gui.main_window_qt import MainWindow
+
             win = MainWindow()
             report = evaluate_main_window_automatic_rgaa(win)
             assert report.total > 0
@@ -154,6 +161,7 @@ class TestEvaluateWithMissingCommPanel:
             MockMaster.list_lin_channels = MagicMock(return_value=[])
 
             from src.gui.main_window_qt import MainWindow
+
             win = MainWindow()
 
             # Remove both comm_window and _comm_panel

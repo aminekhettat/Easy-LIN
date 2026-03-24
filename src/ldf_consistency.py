@@ -434,4 +434,3 @@ def validate_workspace_ldf_files(root_dir: str) -> List[LDFConsistencyReport]:
         report.path = rel
         reports.append(report)
     return reports
-

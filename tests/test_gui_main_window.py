@@ -3,6 +3,7 @@
 Covers:
 - _open_ldf with file dialog (monkeypatch QFileDialog.getOpenFileName)
 - _load_ldf error paths: FileNotFoundError, LDFParseError, generic Exception
+- _load_ldf parse-success announcement: "Parse successful", master name, slave count
 - _add_recent and _update_recent_menu (with duplicates, max 10)
 - _show_about dialog
 - _show_accessibility_help
@@ -104,6 +105,7 @@ def main_window(qapp):
         MockMaster.list_lin_channels = MagicMock(return_value=[])
 
         from src.gui.main_window_qt import MainWindow
+
         win = MainWindow()
         yield win
 
@@ -111,6 +113,7 @@ def main_window(qapp):
 # ---------------------------------------------------------------------------
 # _open_ldf with file dialog
 # ---------------------------------------------------------------------------
+
 
 class TestOpenLdf:
     def test_load_ldf_file_wrapper_calls_load_ldf(self, main_window):
@@ -120,7 +123,8 @@ class TestOpenLdf:
 
     def test_open_ldf_dialog_cancel(self, main_window, monkeypatch):
         monkeypatch.setattr(
-            QFileDialog, "getOpenFileName",
+            QFileDialog,
+            "getOpenFileName",
             staticmethod(lambda *a, **kw: ("", "")),
         )
         main_window._load_ldf = MagicMock()
@@ -129,7 +133,8 @@ class TestOpenLdf:
 
     def test_open_ldf_dialog_select_file(self, main_window, monkeypatch):
         monkeypatch.setattr(
-            QFileDialog, "getOpenFileName",
+            QFileDialog,
+            "getOpenFileName",
             staticmethod(lambda *a, **kw: ("/tmp/test.ldf", "LIN Description Files (*.ldf)")),
         )
         main_window._load_ldf = MagicMock()
@@ -140,6 +145,7 @@ class TestOpenLdf:
 # ---------------------------------------------------------------------------
 # _load_ldf error paths
 # ---------------------------------------------------------------------------
+
 
 class TestLoadLdfErrors:
     def test_load_ldf_file_not_found(self, main_window, monkeypatch):
@@ -177,6 +183,50 @@ class TestLoadLdfErrors:
         main_window._load_ldf("/good.ldf")
         assert main_window._ldf is ldf
 
+    def test_load_ldf_announces_parse_success_with_master_and_slaves(
+        self, main_window, monkeypatch
+    ):
+        """Screen reader must hear 'Parse successful', master name, and slave count on load."""
+        ldf = _make_ldf()  # 1 master "M", 1 slave "S1", 1 frame
+        monkeypatch.setattr("src.gui.main_window_qt.parse_ldf", MagicMock(return_value=ldf))
+        monkeypatch.setattr("src.gui.main_window_qt.validate_ldf", MagicMock(return_value=[]))
+        events: list[tuple[str, bool]] = []
+        monkeypatch.setattr(
+            main_window,
+            "_announce_event",
+            lambda message, timeout_ms=5000, assertive=False: events.append((message, assertive)),
+        )
+        main_window._load_ldf("/good.ldf")
+        assert events, "No announcement was made after loading"
+        msg, is_assertive = events[-1]
+        assert "Parse successful" in msg
+        assert "1 master" in msg
+        assert "M" in msg  # master name
+        assert "1 slave" in msg  # slave count
+        assert is_assertive, "Parse success announcement must be assertive for screen readers"
+
+    def test_focus_ldf_tree_silent_does_not_announce_focus(self, main_window, monkeypatch):
+        """_focus_ldf_tree_silent must not emit a 'Focus:' announcement (avoids overwriting parse msg)."""
+
+        ldf = _make_ldf()
+        monkeypatch.setattr("src.gui.main_window_qt.parse_ldf", MagicMock(return_value=ldf))
+        monkeypatch.setattr("src.gui.main_window_qt.validate_ldf", MagicMock(return_value=[]))
+
+        # Load so there is an LDFViewer as central widget.
+        main_window._load_ldf("/good.ldf")
+
+        events: list[str] = []
+        monkeypatch.setattr(
+            main_window,
+            "_announce_event",
+            lambda message, timeout_ms=5000, assertive=False: events.append(message),
+        )
+        main_window._focus_ldf_tree_silent()
+
+        assert not any("Focus" in e for e in events), (
+            "_focus_ldf_tree_silent must not emit a Focus announcement"
+        )
+
     def test_load_ldf_success_refreshes_existing_viewer(self, main_window, monkeypatch):
         from src.gui.ldf_viewer import LDFViewer
 
@@ -200,6 +250,7 @@ class TestLoadLdfErrors:
 # ---------------------------------------------------------------------------
 # _add_recent and _update_recent_menu
 # ---------------------------------------------------------------------------
+
 
 class TestRecentFiles:
     def test_add_recent(self, main_window):
@@ -247,10 +298,12 @@ class TestRecentFiles:
 # _show_about dialog
 # ---------------------------------------------------------------------------
 
+
 class TestShowAbout:
     def test_show_about_does_not_crash(self, main_window, monkeypatch):
         """Patch exec on the dialog so it returns immediately."""
         from PySide6.QtWidgets import QDialog
+
         monkeypatch.setattr(QDialog, "exec", lambda self: QDialog.DialogCode.Rejected)
         main_window._show_about()
 
@@ -283,14 +336,19 @@ class TestMainWindowAccessibilityMetadata:
         assert main_window.accessibleName() == "Easy-LIN main window"
         assert "Main application window" in main_window.accessibleDescription()
         assert main_window._placeholder.accessibleName() == "Welcome placeholder"
-        assert main_window._placeholder.accessibleDescription() == "Placeholder view shown before an LDF file is loaded."
+        assert (
+            main_window._placeholder.accessibleDescription()
+            == "Placeholder view shown before an LDF file is loaded."
+        )
         assert main_window._sb_ldf.accessibleName() == "LDF summary status"
         assert main_window._sb_ldf.accessibleDescription().strip()
         assert main_window._sb_issues.accessibleDescription().strip()
         assert main_window._sb_comm.accessibleDescription().strip()
         assert main_window._sb_event.accessibleDescription().strip()
 
-    def test_show_about_falls_back_to_company_text_when_logo_missing(self, main_window, monkeypatch):
+    def test_show_about_falls_back_to_company_text_when_logo_missing(
+        self, main_window, monkeypatch
+    ):
         from src.gui.main_window_qt import APP_COMPANY, MainWindow
 
         captured = {"found_company_text": False}
@@ -310,6 +368,7 @@ class TestMainWindowAccessibilityMetadata:
 # ---------------------------------------------------------------------------
 # _show_accessibility_help
 # ---------------------------------------------------------------------------
+
 
 class TestShowAccessibilityHelp:
     def test_show_accessibility_help(self, main_window, monkeypatch):
@@ -336,11 +395,13 @@ class TestShowAccessibilityHelp:
 # _open_vector_docs
 # ---------------------------------------------------------------------------
 
+
 class TestOpenVectorDocs:
     def test_open_vector_docs(self, monkeypatch):
         mock_open = MagicMock()
         monkeypatch.setattr("webbrowser.open", mock_open)
         from src.gui.main_window_qt import MainWindow
+
         MainWindow._open_vector_docs()
         mock_open.assert_called_once()
         assert "vector.com" in mock_open.call_args[0][0]
@@ -350,15 +411,18 @@ class TestOpenVectorDocs:
 # _load_logo_pixmap
 # ---------------------------------------------------------------------------
 
+
 class TestLoadLogoPixmap:
     def test_load_logo_nonexistent(self):
         from src.gui.main_window_qt import MainWindow
+
         result = MainWindow._load_logo_pixmap("/nonexistent/path/logo.png")
         assert result is None
 
     def test_load_logo_existing_invalid(self, tmp_path):
         """An existing file that is not a valid image should return None."""
         from src.gui.main_window_qt import MainWindow
+
         fake_img = tmp_path / "fake.png"
         fake_img.write_bytes(b"not an image")
         result = MainWindow._load_logo_pixmap(str(fake_img))
@@ -368,6 +432,7 @@ class TestLoadLogoPixmap:
 # ---------------------------------------------------------------------------
 # _restore_geometry
 # ---------------------------------------------------------------------------
+
 
 class TestRestoreGeometry:
     def test_restore_geometry_with_saved(self, main_window):
@@ -386,6 +451,7 @@ class TestRestoreGeometry:
 # ---------------------------------------------------------------------------
 # closeEvent
 # ---------------------------------------------------------------------------
+
 
 class TestCloseEvent:
     def test_close_event_persists_geometry(self, main_window, qapp):
@@ -407,6 +473,7 @@ class TestCloseEvent:
 # ---------------------------------------------------------------------------
 # _toggle_communication_window
 # ---------------------------------------------------------------------------
+
 
 class TestToggleCommunicationWindow:
     def test_toggle_show(self, main_window, qapp):
@@ -460,14 +527,18 @@ class TestCommunicationSelectionFlow:
         ldf = _make_ldf()
         ldf.nodes.master = []
         main_window._ldf = ldf
-        monkeypatch.setattr(QMessageBox, "warning", staticmethod(lambda *a, **k: QMessageBox.StandardButton.Ok))
+        monkeypatch.setattr(
+            QMessageBox, "warning", staticmethod(lambda *a, **k: QMessageBox.StandardButton.Ok)
+        )
         assert main_window._prompt_comm_selection() is None
 
     def test_prompt_comm_selection_missing_slave(self, main_window, monkeypatch):
         ldf = _make_ldf()
         ldf.nodes.slaves = []
         main_window._ldf = ldf
-        monkeypatch.setattr(QMessageBox, "warning", staticmethod(lambda *a, **k: QMessageBox.StandardButton.Ok))
+        monkeypatch.setattr(
+            QMessageBox, "warning", staticmethod(lambda *a, **k: QMessageBox.StandardButton.Ok)
+        )
         assert main_window._prompt_comm_selection() is None
 
     def test_prompt_comm_selection_cancelled_dialog(self, main_window, monkeypatch):
@@ -582,6 +653,7 @@ class TestCommunicationSelectionFlow:
 # _focus_ldf_details compatibility alias
 # ---------------------------------------------------------------------------
 
+
 class TestFocusLdfDetails:
     def test_focus_ldf_details_no_viewer(self, main_window):
         """With placeholder as central widget, should not crash."""
@@ -599,15 +671,18 @@ class TestFocusLdfDetails:
 # _set_status_label_color
 # ---------------------------------------------------------------------------
 
+
 class TestSetStatusLabelColor:
     def test_valid_color(self, qapp):
         from src.gui.main_window_qt import MainWindow
+
         label = QLabel("test")
         MainWindow._set_status_label_color(label, "#FF0000")
         assert "color" in label.styleSheet()
 
     def test_invalid_color(self, qapp):
         from src.gui.main_window_qt import MainWindow
+
         label = QLabel("test")
         label.setStyleSheet("")
         MainWindow._set_status_label_color(label, "not_a_valid_color_at_all")
@@ -618,9 +693,11 @@ class TestSetStatusLabelColor:
 # _build_about_html
 # ---------------------------------------------------------------------------
 
+
 class TestBuildAboutHtml:
     def test_build_about_html_content(self):
         from src.gui.main_window_qt import MainWindow
+
         html = MainWindow._build_about_html()
         assert "Easy-LIN" in html
         assert "mailto:" in html
@@ -630,6 +707,7 @@ class TestBuildAboutHtml:
 # ---------------------------------------------------------------------------
 # _build_issues_report_text
 # ---------------------------------------------------------------------------
+
 
 class TestBuildIssuesReportText:
     def test_build_issues_report_text(self):
@@ -654,6 +732,7 @@ class TestBuildIssuesReportText:
 
     def test_build_issues_report_text_empty(self):
         from src.gui.main_window_qt import MainWindow
+
         text = MainWindow._build_issues_report_text("/empty.ldf", [])
         assert "Errors   : 0" in text
         assert "Warnings : 0" in text
@@ -717,8 +796,10 @@ class TestIssuesDialogSaveReport:
 
         monkeypatch.setattr(QDialog, "exec", _fake_exec)
 
-        with patch("builtins.open", side_effect=OSError("disk full")), \
-             patch.object(QMessageBox, "warning") as warning:
+        with (
+            patch("builtins.open", side_effect=OSError("disk full")),
+            patch.object(QMessageBox, "warning") as warning,
+        ):
             result = main_window._show_ldf_issues_dialog("/my.ldf", issues)
 
         assert result is False
@@ -763,6 +844,7 @@ class TestIssuesDialogSaveReport:
 # Region cycling and focus
 # ---------------------------------------------------------------------------
 
+
 class TestRegionCycling:
     def test_focus_next_region(self, main_window):
         main_window._region_cycle_index = 0
@@ -786,6 +868,7 @@ class TestRegionCycling:
 # ---------------------------------------------------------------------------
 # Status bar event announcements
 # ---------------------------------------------------------------------------
+
 
 class TestAnnounceEvent:
     def test_announce_event_normal(self, main_window):
@@ -824,7 +907,6 @@ class TestAnnounceEvent:
         main_window._set_ldf_issues_status(1, 2)
         assert "2" in main_window._sb_issues.text()
 
-
     # ---------------------------------------------------------------------------
     # _on_node_selection_changed and node lock wiring
     # ---------------------------------------------------------------------------
@@ -838,6 +920,7 @@ class TestAnnounceEvent:
 
         def test_set_comm_status_connected_locks_viewer(self, main_window, monkeypatch):
             from src.gui.ldf_viewer import LDFViewer
+
             mock_viewer = MagicMock(spec=LDFViewer)
             monkeypatch.setattr(main_window, "centralWidget", lambda: mock_viewer)
             main_window._set_comm_status("Connected")
@@ -845,6 +928,7 @@ class TestAnnounceEvent:
 
         def test_set_comm_status_disconnected_unlocks_viewer(self, main_window, monkeypatch):
             from src.gui.ldf_viewer import LDFViewer
+
             mock_viewer = MagicMock(spec=LDFViewer)
             monkeypatch.setattr(main_window, "centralWidget", lambda: mock_viewer)
             main_window._set_comm_status("Disconnected")

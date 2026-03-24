@@ -88,8 +88,12 @@ class TestLINController:  # pylint: disable=too-many-public-methods
         c.connect(_channel(), 19200, LINMode.MASTER)
 
         assert api.set_notification.called
-        set_idx = next(i for i, call in enumerate(api.method_calls) if call[0] == "set_notification")
-        act_idx = next(i for i, call in enumerate(api.method_calls) if call[0] == "activate_channel")
+        set_idx = next(
+            i for i, call in enumerate(api.method_calls) if call[0] == "set_notification"
+        )
+        act_idx = next(
+            i for i, call in enumerate(api.method_calls) if call[0] == "activate_channel"
+        )
         assert set_idx < act_idx
 
     def test_connect_when_already_connected_raises(self):

@@ -17,7 +17,9 @@ def qapp():
 def test_hardware_combobox_populated_on_startup(qapp):
     with patch("src.gui.communication_panel.LINMaster") as MockMaster:
         MockMaster.return_value = MagicMock(is_connected=False)
-        MockMaster.list_lin_channels.return_value = [{"name": "LIN1", "channel_index": 0, "channel_mask": 1}]
+        MockMaster.list_lin_channels.return_value = [
+            {"name": "LIN1", "channel_index": 0, "channel_mask": 1}
+        ]
         from src.gui.communication_window import CommunicationWindow
 
         win = CommunicationWindow()
@@ -28,7 +30,9 @@ def test_connect_button_enables_on_channel_selected(qapp):
     with patch("src.gui.communication_panel.LINMaster") as MockMaster:
         master = MagicMock(is_connected=False)
         MockMaster.return_value = master
-        MockMaster.list_lin_channels.return_value = [{"name": "LIN1", "channel_index": 0, "channel_mask": 1}]
+        MockMaster.list_lin_channels.return_value = [
+            {"name": "LIN1", "channel_index": 0, "channel_mask": 1}
+        ]
         from src.gui.communication_window import CommunicationWindow
 
         win = CommunicationWindow()
@@ -41,9 +45,13 @@ def test_connect_button_triggers_lin_controller_connect(qapp):
         master = MagicMock(is_connected=False)
         master.preflight.return_value = (True, "OK")
         MockMaster.return_value = master
-        MockMaster.list_lin_channels.return_value = [{
-            "name": "LIN1", "channel_index": 0, "channel_mask": 1,
-        }]
+        MockMaster.list_lin_channels.return_value = [
+            {
+                "name": "LIN1",
+                "channel_index": 0,
+                "channel_mask": 1,
+            }
+        ]
         from src.gui.communication_window import CommunicationWindow
 
         win = CommunicationWindow()
@@ -55,7 +63,9 @@ def test_disconnect_button_triggers_lin_controller_disconnect(qapp):
     with patch("src.gui.communication_panel.LINMaster") as MockMaster:
         master = MagicMock(is_connected=True)
         MockMaster.return_value = master
-        MockMaster.list_lin_channels.return_value = [{"name": "LIN1", "channel_index": 0, "channel_mask": 1}]
+        MockMaster.list_lin_channels.return_value = [
+            {"name": "LIN1", "channel_index": 0, "channel_mask": 1}
+        ]
         from src.gui.communication_window import CommunicationWindow
 
         win = CommunicationWindow()

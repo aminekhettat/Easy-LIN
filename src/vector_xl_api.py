@@ -315,7 +315,7 @@ class VectorXLApi:  # pylint: disable=too-many-public-methods
     def __init__(self) -> None:
         """Load the Vector XL DLL and configure ctypes prototypes."""
         self._dll = self._load_dll()
-        self._dll_path: Optional[str] = getattr(self._dll, '_name', None)
+        self._dll_path: Optional[str] = getattr(self._dll, "_name", None)
         self._setup_prototypes()
 
     @property
@@ -933,4 +933,3 @@ class VectorXLApi:  # pylint: disable=too-many-public-methods
     def get_error_string(self, status: int) -> str:
         """Compatibility alias for :meth:`error_string`."""
         return self.error_string(status)
-

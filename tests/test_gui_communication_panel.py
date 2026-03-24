@@ -93,6 +93,7 @@ def _make_ldf(master_name="M", slaves=None):
 # _Bridge tests
 # ---------------------------------------------------------------------------
 
+
 class TestBridge:
     def test_frame_received_signal(self, qapp):
         from src.gui.communication_panel import _Bridge
@@ -121,6 +122,7 @@ class TestBridge:
 # _FrameMonitor tests
 # ---------------------------------------------------------------------------
 
+
 class TestFrameMonitor:
     def test_add_frame_normal(self, qapp):
         from src.gui.communication_panel import _FrameMonitor
@@ -135,7 +137,7 @@ class TestFrameMonitor:
         from src.gui.communication_panel import _FrameMonitor
 
         monitor = _FrameMonitor()
-        frame = ReceivedFrame(frame_id=0x10, data=b"\xFF", timestamp_ns=1_000_000, crc_error=True)
+        frame = ReceivedFrame(frame_id=0x10, data=b"\xff", timestamp_ns=1_000_000, crc_error=True)
         monitor.add_frame(frame)
         assert monitor._table.rowCount() == 1
         assert monitor._table.item(0, 4).text() == "CRC ERR"
@@ -231,7 +233,9 @@ class TestFrameMonitor:
             MockDlg.getSaveFileName.return_value = (out_path, "CSV files (*.csv)")
             monitor._toggle_csv_logging()
 
-        frame = ReceivedFrame(frame_id=0x10, data=b"\x01\x02", timestamp_ns=5_000_000, checksum=0x5A)
+        frame = ReceivedFrame(
+            frame_id=0x10, data=b"\x01\x02", timestamp_ns=5_000_000, checksum=0x5A
+        )
         monitor.add_frame(frame)
         monitor.stop_csv_logging()
 
@@ -327,6 +331,7 @@ class TestFrameMonitor:
 # CommunicationPanel tests
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def panel(qapp):
     """Create a CommunicationPanel with a mocked LINMaster."""
@@ -338,6 +343,7 @@ def panel(qapp):
         MockMaster.list_lin_channels = MagicMock(return_value=[])
 
         from src.gui.communication_panel import CommunicationPanel
+
         p = CommunicationPanel()
         p._master = master_inst
         yield p
@@ -365,8 +371,16 @@ class TestCommunicationPanelConstruction:
         assert all(splitter.accessibleDescription().strip() for splitter in splitters)
 
         labels = [
-            label for label in panel.findChildren(QLabel)
-            if label.text() and ("Channel:" in label.text() or "Frame:" in label.text() or "Schedule:" in label.text() or "Data (hex" in label.text() or "Frame Monitor" in label.text())
+            label
+            for label in panel.findChildren(QLabel)
+            if label.text()
+            and (
+                "Channel:" in label.text()
+                or "Frame:" in label.text()
+                or "Schedule:" in label.text()
+                or "Data (hex" in label.text()
+                or "Frame Monitor" in label.text()
+            )
         ]
         assert labels
         assert all(label.accessibleName().strip() for label in labels)
@@ -409,6 +423,7 @@ class TestCommunicationPanelConstruction:
             MockMaster.list_lin_channels = MagicMock(return_value=[])
 
             from src.gui.communication_panel import CommunicationPanel
+
             CommunicationPanel()
 
         assert MockMaster.call_count == 1
@@ -608,6 +623,7 @@ class TestCommunicationPanelConnect:
         """CommunicationBackend Protocol declares preflight()."""
         from src.gui.communication_panel import CommunicationBackend
         import inspect
+
         members = {name for name, _ in inspect.getmembers(CommunicationBackend)}
         assert "preflight" in members
 
@@ -839,7 +855,7 @@ class TestCommunicationPanelCallbacks:
         assert errors == ["test error"]
 
     def test_monitor_add_frame(self, panel, qapp):
-        frame = ReceivedFrame(frame_id=0x10, data=b"\xAA\xBB", timestamp_ns=5_000_000)
+        frame = ReceivedFrame(frame_id=0x10, data=b"\xaa\xbb", timestamp_ns=5_000_000)
         panel._monitor_add_frame(frame)
         assert panel._monitor._table.rowCount() == 1
 

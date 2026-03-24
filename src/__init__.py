@@ -12,4 +12,3 @@ supporting application services for Easy-LIN.
 :disclaimer: Provided "AS IS", without warranties or liability, as described
         in LICENSE.
 """
-

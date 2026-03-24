@@ -221,13 +221,9 @@ def test_validate_ldf_manual_object_branches() -> None:
         protocol_version="",
         language_version="",
         speed=19.2,
-        nodes=LDFNodes(
-            master=LDFMaster(name="", time_base=5.0, jitter=0.1), slaves=["S"]
-        ),
+        nodes=LDFNodes(master=LDFMaster(name="", time_base=5.0, jitter=0.1), slaves=["S"]),
         signals=[
-            LDFSignal(
-                name="S0", size=0, init_value=-1, publisher="Unknown", subscribers=["S"]
-            ),
+            LDFSignal(name="S0", size=0, init_value=-1, publisher="Unknown", subscribers=["S"]),
             LDFSignal(name="S1", size=8, init_value=0, publisher="S", subscribers=[]),
         ],
         frames=[
@@ -240,9 +236,7 @@ def test_validate_ldf_manual_object_branches() -> None:
             )
         ],
         schedule_tables=[
-            LDFScheduleTable(
-                name="T", entries=[LDFScheduleEntry(frame_name="F", delay=0)]
-            )
+            LDFScheduleTable(name="T", entries=[LDFScheduleEntry(frame_name="F", delay=0)])
         ],
         encoding_types=[LDFEncodingType(name="E")],
         signal_representations=[],
@@ -280,9 +274,7 @@ def test_format_report_parse_failed_and_inconsistent_variants() -> None:
 
     inconsistent = parse_ldf_string("LIN_description_file ;")
     issues = validate_ldf(inconsistent)
-    fake_report = type(report_parse_failed)(
-        path="in-memory", parsed=True, issues=issues
-    )
+    fake_report = type(report_parse_failed)(path="in-memory", parsed=True, issues=issues)
     text_inconsistent = format_report(fake_report)
     assert "INCONSISTENT" in text_inconsistent
 

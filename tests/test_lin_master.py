@@ -89,11 +89,11 @@ class TestReceivedFrame:
         assert f.crc_error is False
 
     def test_init_crc_error(self):
-        f = ReceivedFrame(0x3F, b"\xFF", 0, crc_error=True)
+        f = ReceivedFrame(0x3F, b"\xff", 0, crc_error=True)
         assert f.crc_error is True
 
     def test_repr(self):
-        f = ReceivedFrame(frame_id=0x0A, data=b"\xDE\xAD", timestamp_ns=42)
+        f = ReceivedFrame(frame_id=0x0A, data=b"\xde\xad", timestamp_ns=42)
         r = repr(f)
         assert r == "ReceivedFrame(id=0x0A, data=[DE AD], ts=42ns)"
 
@@ -262,6 +262,7 @@ class TestConnect:
 
         m = LINMaster()
         import logging
+
         with caplog.at_level(logging.WARNING, logger="src.lin_master"):
             m.connect(channel_mask=1)
         assert "No TX permission" in caplog.text
@@ -382,6 +383,7 @@ class TestDisconnect:
         m = LINMaster()
         m.connect(channel_mask=1)
         import logging
+
         with caplog.at_level(logging.WARNING, logger="src.lin_master"):
             m.disconnect()
         assert "Error during disconnect" in caplog.text
@@ -571,15 +573,17 @@ class TestRxLoop:
 
         assert len(received) == 3
         assert len(changed) == 2
-        assert changed[0] == (0x11, b"\xAA\xBB", None)
-        assert changed[1] == (0x11, b"\xAA\xCC", b"\xAA\xBB")
+        assert changed[0] == (0x11, b"\xaa\xbb", None)
+        assert changed[1] == (0x11, b"\xaa\xcc", b"\xaa\xbb")
         m._connected = False
 
     @patch("src.lin_master.VectorXLApi")
     def test_rx_loop_changed_callback_exception(self, MockApi, caplog):
         """Exception inside on_frame_changed is logged and loop continues."""
         api = _mock_api()
-        evt = _make_xl_event(tag=_TAG_LIN_MSG, frame_id=0x12, dlc=1, data=[0x01, 0, 0, 0, 0, 0, 0, 0])
+        evt = _make_xl_event(
+            tag=_TAG_LIN_MSG, frame_id=0x12, dlc=1, data=[0x01, 0, 0, 0, 0, 0, 0, 0]
+        )
         call_count = 0
 
         def _receive(port):
@@ -597,6 +601,7 @@ class TestRxLoop:
         MockApi.return_value = api
 
         import logging
+
         m = LINMaster(on_frame_changed=_bad_changed)
         with caplog.at_level(logging.ERROR, logger="src.lin_master"):
             m.connect(channel_mask=1)
@@ -610,8 +615,9 @@ class TestRxLoop:
         api = _mock_api()
         received = []
 
-        evt = _make_xl_event(tag=_TAG_LIN_MSG, frame_id=0x05, dlc=1,
-                             data=[0xFF, 0, 0, 0, 0, 0, 0, 0], flags=0x08)
+        evt = _make_xl_event(
+            tag=_TAG_LIN_MSG, frame_id=0x05, dlc=1, data=[0xFF, 0, 0, 0, 0, 0, 0, 0], flags=0x08
+        )
         call_count = 0
 
         def _receive(port):
@@ -675,6 +681,7 @@ class TestRxLoop:
         MockApi.return_value = api
 
         import logging
+
         m = LINMaster(on_frame_received=bad_callback)
         with caplog.at_level(logging.ERROR, logger="src.lin_master"):
             m.connect(channel_mask=1)
@@ -725,6 +732,7 @@ class TestRxLoop:
         MockApi.return_value = api
 
         import logging
+
         m = LINMaster(on_error=lambda msg: errors.append(msg))
         with caplog.at_level(logging.WARNING, logger="src.lin_master"):
             m.connect(channel_mask=1)
@@ -772,6 +780,7 @@ class TestRxLoop:
         MockApi.return_value = api
 
         import logging
+
         m = LINMaster()
         with caplog.at_level(logging.ERROR, logger="src.lin_master"):
             m.connect(channel_mask=1)
@@ -790,15 +799,19 @@ class TestSchedule:
     def test_run_and_stop_schedule(self, MockApi):
         api = _mock_api()
         MockApi.return_value = api
-        ldf = _make_ldf(frames=[
-            LDFFrame(name="F1", frame_id=0x10, publisher="M", frame_size=2),
-        ])
+        ldf = _make_ldf(
+            frames=[
+                LDFFrame(name="F1", frame_id=0x10, publisher="M", frame_size=2),
+            ]
+        )
         m = LINMaster()
         m.connect(channel_mask=1, ldf=ldf)
 
-        sched = _make_schedule([
-            LDFScheduleEntry(frame_name="F1", delay=5),
-        ])
+        sched = _make_schedule(
+            [
+                LDFScheduleEntry(frame_name="F1", delay=5),
+            ]
+        )
         m.run_schedule(sched)
         assert m._sched_thread is not None
         time.sleep(0.05)  # let it iterate at least once
@@ -812,9 +825,11 @@ class TestSchedule:
         """Calling run_schedule a second time stops the first schedule."""
         api = _mock_api()
         MockApi.return_value = api
-        ldf = _make_ldf(frames=[
-            LDFFrame(name="F1", frame_id=0x10, publisher="M", frame_size=2),
-        ])
+        ldf = _make_ldf(
+            frames=[
+                LDFFrame(name="F1", frame_id=0x10, publisher="M", frame_size=2),
+            ]
+        )
         m = LINMaster()
         m.connect(channel_mask=1, ldf=ldf)
 
@@ -866,14 +881,17 @@ class TestSchedule:
         api.lin_send_request.side_effect = VectorXLError("xlLinSendRequest", 0xAA)
         MockApi.return_value = api
         errors = []
-        ldf = _make_ldf(frames=[
-            LDFFrame(name="F1", frame_id=0x10, publisher="M", frame_size=2),
-        ])
+        ldf = _make_ldf(
+            frames=[
+                LDFFrame(name="F1", frame_id=0x10, publisher="M", frame_size=2),
+            ]
+        )
         m = LINMaster(on_error=lambda msg: errors.append(msg))
         m.connect(channel_mask=1, ldf=ldf)
 
         sched = _make_schedule([LDFScheduleEntry(frame_name="F1", delay=5)])
         import logging
+
         with caplog.at_level(logging.WARNING, logger="src.lin_master"):
             m.run_schedule(sched)
             time.sleep(0.05)
@@ -888,9 +906,11 @@ class TestSchedule:
         api = _mock_api()
         api.lin_send_request.side_effect = VectorXLError("xlLinSendRequest", 0xAA)
         MockApi.return_value = api
-        ldf = _make_ldf(frames=[
-            LDFFrame(name="F1", frame_id=0x10, publisher="M", frame_size=2),
-        ])
+        ldf = _make_ldf(
+            frames=[
+                LDFFrame(name="F1", frame_id=0x10, publisher="M", frame_size=2),
+            ]
+        )
         m = LINMaster(on_error=None)
         m.connect(channel_mask=1, ldf=ldf)
 
@@ -915,17 +935,21 @@ class TestSchedule:
         """Setting _sched_stop should break out of the entry iteration."""
         api = _mock_api()
         MockApi.return_value = api
-        ldf = _make_ldf(frames=[
-            LDFFrame(name="F1", frame_id=0x10, publisher="M", frame_size=2),
-            LDFFrame(name="F2", frame_id=0x20, publisher="M", frame_size=2),
-        ])
+        ldf = _make_ldf(
+            frames=[
+                LDFFrame(name="F1", frame_id=0x10, publisher="M", frame_size=2),
+                LDFFrame(name="F2", frame_id=0x20, publisher="M", frame_size=2),
+            ]
+        )
         m = LINMaster()
         m.connect(channel_mask=1, ldf=ldf)
 
-        sched = _make_schedule([
-            LDFScheduleEntry(frame_name="F1", delay=200),
-            LDFScheduleEntry(frame_name="F2", delay=200),
-        ])
+        sched = _make_schedule(
+            [
+                LDFScheduleEntry(frame_name="F1", delay=200),
+                LDFScheduleEntry(frame_name="F2", delay=200),
+            ]
+        )
         m.run_schedule(sched)
         time.sleep(0.01)
         m.stop_schedule()

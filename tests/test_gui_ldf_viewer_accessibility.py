@@ -1,10 +1,12 @@
 """Tests for accessibility features in src/gui/ldf_viewer.py.
 
 Covers:
-- Search bar: _show_search, _hide_search, _on_search_text_changed (matches/no matches),
   _find_next_match (wrap around), _collect_matches
-- Breadcrumb: _update_breadcrumb, _sibling_position (with/without parent, single item)
-- Sibling navigation: _next_sibling, _previous_sibling (with parent and top-level)
+        - Search bar: _show_search, _hide_search, _on_search_text_changed (matches/no matches),
+            _find_next_match (wrap around), _collect_matches
+        - Breadcrumb: _update_breadcrumb, _sibling_position (with/without parent, single item)
+        - Navigation: _next_sibling, _previous_sibling (with parent and top-level);
+            depth-first _next_navigation_item / _previous_navigation_item
 - Expand/collapse subtree: _expand_current_subtree, _collapse_current_subtree,
   _expand_recursive, _collapse_recursive
 - _fire_accessible_event (with and without exception)
@@ -328,6 +330,55 @@ class TestSiblingNavigation:
 
         assert LDFViewer._previous_sibling(second) is first
 
+    def test_next_navigation_item_skips_descendants_and_returns_next_sibling(self, viewer):
+        from src.gui.ldf_viewer import LDFViewer
+
+        root = viewer._tree.topLevelItem(0)
+        first_branch = root.child(0)  # "Header" — expanded after _populate
+        expected_child = first_branch.child(0)  # "Protocol version: 2.1"
+
+        assert first_branch.isExpanded()
+        assert LDFViewer._next_navigation_item(first_branch) is expected_child
+
+    def test_next_navigation_item_climbs_to_ancestor_sibling(self, viewer):
+        from src.gui.ldf_viewer import LDFViewer
+
+        root = viewer._tree.topLevelItem(0)
+        first_branch = root.child(0)
+        last_child = first_branch.child(first_branch.childCount() - 1)
+
+        assert LDFViewer._next_navigation_item(last_child) is root.child(1)
+
+    def test_previous_navigation_item_returns_parent_when_no_previous_sibling(self, viewer):
+        from src.gui.ldf_viewer import LDFViewer
+
+        root = viewer._tree.topLevelItem(0)
+        first_branch = root.child(0)
+        first_child = first_branch.child(0)
+
+        assert LDFViewer._previous_navigation_item(first_child) is first_branch
+
+    def test_previous_navigation_item_descends_into_last_child_of_expanded_sibling(self, viewer):
+        from src.gui.ldf_viewer import LDFViewer
+
+        root = viewer._tree.topLevelItem(0)
+        first_branch = root.child(0)  # "Header" — expanded, leaf children
+        second_branch = root.child(1)  # "Nodes"
+        last_header_child = first_branch.child(first_branch.childCount() - 1)
+
+        assert first_branch.isExpanded()
+        assert LDFViewer._previous_navigation_item(second_branch) is last_header_child
+
+    def test_next_navigation_item_returns_none_when_last_branch_is_collapsed(self, viewer):
+        from src.gui.ldf_viewer import LDFViewer
+
+        root = viewer._tree.topLevelItem(0)
+        last_branch = root.child(root.childCount() - 1)
+        # Collapse so depth-first does not descend into its children.
+        viewer._tree.collapseItem(last_branch)
+
+        assert LDFViewer._next_navigation_item(last_branch) is None
+
 
 class TestKeyboardNavigationEventFilter:
     def test_event_filter_with_no_current_item(self, viewer):
@@ -351,7 +402,68 @@ class TestKeyboardNavigationEventFilter:
 
         viewer._tree.setCurrentItem(root)
         assert viewer.eventFilter(viewer._tree, event_right) is True
-        assert viewer._tree.currentItem() is root
+        assert viewer._tree.currentItem() is root.child(0)
+
+    def test_event_filter_down_moves_to_next_navigation_item(self, viewer):
+        root = viewer._tree.topLevelItem(0)
+        assert root is not None
+        assert root.childCount() >= 2
+
+        first_child = root.child(0)
+        second_child = root.child(1)
+
+        viewer._tree.setCurrentItem(first_child)
+        viewer._tree.collapseItem(first_child)  # must be collapsed so Down skips to sibling
+        viewer._tree.setCurrentItem(first_child)
+        event_down = QKeyEvent(
+            QEvent.Type.KeyPress, Qt.Key.Key_Down, Qt.KeyboardModifier.NoModifier
+        )
+
+        assert viewer.eventFilter(viewer._tree, event_down) is True
+        assert viewer._tree.currentItem() is second_child
+
+    def test_event_filter_up_moves_to_previous_navigation_item(self, viewer):
+        root = viewer._tree.topLevelItem(0)
+        assert root is not None
+        assert root.childCount() >= 2
+
+        first_child = root.child(0)
+        second_child = root.child(1)
+
+        viewer._tree.collapseItem(first_child)  # collapse so Up returns the sibling itself
+        viewer._tree.setCurrentItem(second_child)
+        event_up = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Up, Qt.KeyboardModifier.NoModifier)
+
+        assert viewer.eventFilter(viewer._tree, event_up) is True
+        assert viewer._tree.currentItem() is first_child
+
+    def test_event_filter_down_announces_when_no_next_navigation_item(self, viewer):
+        root = viewer._tree.topLevelItem(0)
+        assert root is not None
+
+        last_child = root.child(root.childCount() - 1)
+        viewer._tree.collapseItem(last_child)  # collapse so Down finds no next item
+        viewer._tree.setCurrentItem(last_child)
+        event_down = QKeyEvent(
+            QEvent.Type.KeyPress, Qt.Key.Key_Down, Qt.KeyboardModifier.NoModifier
+        )
+
+        with patch.object(viewer, "_announce_status") as announce_status:
+            assert viewer.eventFilter(viewer._tree, event_down) is True
+
+        announce_status.assert_called_once_with("No next hierarchy item at this level.")
+
+    def test_event_filter_up_announces_when_no_previous_navigation_item(self, viewer):
+        root = viewer._tree.topLevelItem(0)
+        assert root is not None
+
+        viewer._tree.setCurrentItem(root)
+        event_up = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Up, Qt.KeyboardModifier.NoModifier)
+
+        with patch.object(viewer, "_announce_status") as announce_status:
+            assert viewer.eventFilter(viewer._tree, event_up) is True
+
+        announce_status.assert_called_once_with("No previous hierarchy item at this level.")
 
     def test_event_filter_left_go_parent(self, viewer):
         root = viewer._tree.topLevelItem(0)
@@ -398,6 +510,18 @@ class TestKeyboardNavigationEventFilter:
 
 
 class TestDebugAndEncodingEdgePaths:
+    def test_announce_navigation_target_reports_label_position_and_state(self, viewer):
+        root = viewer._tree.topLevelItem(0)
+        assert root is not None
+
+        with patch.object(viewer, "_announce_status") as announce_status:
+            viewer._announce_navigation_target(root)
+
+        announce_status.assert_called_once()
+        message = announce_status.call_args.args[0]
+        assert root.text(0) in message
+        assert "expanded" in message or "collapsed" in message
+
     def test_debug_tree_event_logs_when_enabled(self, viewer):
         item = viewer._tree.topLevelItem(0)
         assert item is not None

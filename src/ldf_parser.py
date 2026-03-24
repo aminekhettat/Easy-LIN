@@ -780,4 +780,3 @@ def parse_ldf_string(content: str) -> LDFFile:
         raise
     except Exception as exc:
         raise LDFParseError(f"Unexpected parse error: {exc}") from exc
-

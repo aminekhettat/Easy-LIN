@@ -209,9 +209,7 @@ class VectorLINBus:
             self._try_open_vector()
             self._running = True
             if not self._simulation:
-                self._rx_thread = threading.Thread(
-                    target=self._rx_loop, daemon=True, name="LIN-RX"
-                )
+                self._rx_thread = threading.Thread(target=self._rx_loop, daemon=True, name="LIN-RX")
                 self._rx_thread.start()
 
     def stop(self) -> None:
@@ -288,9 +286,7 @@ class VectorLINBus:
     def _try_open_vector(self) -> None:
         """Open the Vector backend or fall back to the simulation bus."""
         if not _CAN_AVAILABLE:
-            logger.warning(
-                "python-can is not installed â€“ switching to simulation mode."
-            )
+            logger.warning("python-can is not installed â€“ switching to simulation mode.")
             self._simulation = True
             self._sim_bus = _SimBus()
             with self._lock:
@@ -376,4 +372,3 @@ class VectorLINBus:
                 cb(frame)
             except Exception:
                 logger.exception("Error in TX callback")
-

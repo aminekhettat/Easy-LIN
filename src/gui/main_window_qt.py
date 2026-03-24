@@ -35,7 +35,16 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
 )
 from PySide6.QtCore import Qt, QSettings, QSize, QTimer
-from PySide6.QtGui import QAction, QFont, QKeySequence, QColor, QPixmap, QShortcut
+from PySide6.QtGui import (
+    QAction,
+    QFont,
+    QKeySequence,
+    QColor,
+    QPixmap,
+    QShortcut,
+    QAccessible,
+    QAccessibleAnnouncementEvent,
+)
 
 from src.ldf_parser import parse_ldf, LDFFile, LDFParseError
 from src.ldf_consistency import validate_ldf
@@ -46,7 +55,7 @@ log = logging.getLogger(__name__)
 
 APP_NAME = "Easy-LIN"
 APP_ORG = "Easy-LIN"
-APP_VERSION = "0.7.2"
+APP_VERSION = "0.8.0"
 APP_AUTHOR = "Amine Khettat"
 APP_COMPANY = "BLIND SYSTEMS"
 APP_CONTACT_EMAIL = "contact@blindsystems.org"
@@ -165,8 +174,15 @@ class MainWindow(QMainWindow):
         sb.addPermanentWidget(self._sb_comm)
         sb.addPermanentWidget(self._sb_event, 1)
 
-    def _announce_event(self, message: str, timeout_ms: int = 5000) -> None:
-        """Show a short-lived status bar message and persist it as latest event."""
+    def _announce_event(
+        self, message: str, timeout_ms: int = 5000, assertive: bool = False
+    ) -> None:
+        """Show a short-lived status bar message and persist it as latest event.
+
+        When *assertive* is True, also fires a QAccessibleAnnouncementEvent so
+        that screen readers (NVDA, JAWS, Narrator) interrupt what they are
+        currently reading and speak the message immediately.
+        """
         self.statusBar().showMessage(message, timeout_ms)
         self._sb_event.setText(f"Last event: {message}")
         event_color = STATUS_COLOR_INFO
@@ -176,6 +192,13 @@ class MainWindow(QMainWindow):
         elif "warning" in lowered:
             event_color = STATUS_COLOR_WARN
         self._set_status_label_color(self._sb_event, event_color)
+        if assertive:
+            try:
+                ann = QAccessibleAnnouncementEvent(self, message)
+                ann.setPoliteness(QAccessible.AnnouncementPoliteness.Assertive)
+                QAccessible.updateAccessibility(ann)
+            except Exception:
+                pass
 
     @staticmethod
     def _set_status_label_color(label: QLabel, color_hex: str) -> None:
@@ -388,14 +411,18 @@ class MainWindow(QMainWindow):
         self._set_ldf_issues_status(warning_count, error_count)
 
         slaves = ldf.nodes.slaves if ldf.nodes else []
+        master_name = ldf.nodes.master.name if ldf.nodes and ldf.nodes.master else "unknown"
         self._announce_event(
-            f"Loaded: {os.path.basename(path)}  |  "
-            f"LIN {ldf.protocol_version}  |  {ldf.speed} kbps  |  "
-            f"{len(ldf.frames)} frames  |  "
-            f"{len(slaves)} slave(s)",
-            timeout_ms=6000,
+            f"Parse successful. "
+            f"{os.path.basename(path)}, "
+            f"LIN {ldf.protocol_version}, {ldf.speed} kbps. "
+            f"1 master: {master_name}. "
+            f"{len(slaves)} slave(s). "
+            f"{len(ldf.frames)} frames.",
+            timeout_ms=8000,
+            assertive=True,
         )
-        QTimer.singleShot(0, self._focus_ldf_tree)
+        QTimer.singleShot(0, self._focus_ldf_tree_silent)
 
     # ------------------------------------------------------------------
     # LDF validation gate dialogs
@@ -828,6 +855,20 @@ class MainWindow(QMainWindow):
             viewer.focus_hierarchy_tree()
             self._region_cycle_index = 0
             self._announce_event("Focus: hierarchy tree", timeout_ms=2000)
+        elif viewer is not None:
+            viewer.setFocus(Qt.FocusReason.ShortcutFocusReason)
+
+    def _focus_ldf_tree_silent(self) -> None:
+        """Move focus to the hierarchy tree after an LDF load.
+
+        Unlike _focus_ldf_tree this variant does *not* emit a 'Focus:
+        hierarchy tree' announcement so the parse-success message that was
+        just fired stays as the last event heard by screen readers.
+        """
+        viewer = self.centralWidget()
+        if isinstance(viewer, LDFViewer):
+            viewer.focus_hierarchy_tree()
+            self._region_cycle_index = 0
         elif viewer is not None:
             viewer.setFocus(Qt.FocusReason.ShortcutFocusReason)
 

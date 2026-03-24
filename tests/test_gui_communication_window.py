@@ -81,6 +81,7 @@ def comm_window(qapp):
         MockMaster.list_lin_channels = MagicMock(return_value=[])
 
         from src.gui.communication_window import CommunicationWindow
+
         win = CommunicationWindow()
         yield win
 
@@ -88,6 +89,7 @@ def comm_window(qapp):
 class TestCommunicationWindowConstruction:
     def test_has_comm_panel(self, comm_window):
         from src.gui.communication_panel import CommunicationPanel
+
         assert isinstance(comm_window._comm_panel, CommunicationPanel)
 
     def test_window_has_accessible_metadata(self, comm_window):
@@ -238,6 +240,7 @@ class TestCommunicationWindowRestoreGeometry:
             MockMaster.list_lin_channels = MagicMock(return_value=[])
 
             from src.gui.communication_window import CommunicationWindow
+
             win = CommunicationWindow()
             # Explicitly test the restore path with no geometry
             win._settings = MagicMock(spec=QSettings)

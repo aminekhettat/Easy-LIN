@@ -62,7 +62,7 @@ technical workflows above.
 Release Roadmap
 ---------------
 
-- Current release: 0.7.2
+- Current release: 0.8.0
 - Next patch release: 0.7.3, focused on runtime diagnostics, integrity checks, and troubleshooting guidance
 - Next minor release: 0.8.0, focused on the next larger communication workflow increment after the 0.7.x hardening line
 

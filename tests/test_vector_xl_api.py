@@ -79,10 +79,12 @@ def _make_api(fake_dll=None):
     if fake_dll is None:
         fake_dll = FakeDLL()
     import vector_xl_api as mod
+
     api = mod.VectorXLApi.__new__(mod.VectorXLApi)
     api._dll = fake_dll
     api._setup_prototypes()
     return api, fake_dll
+
 
 import vector_xl_api as vxl  # noqa: E402
 from vector_xl_api import (  # noqa: E402
@@ -306,9 +308,11 @@ class TestLoadDll:
     def test_find_library_returns_path_64bit(self):
         sentinel = MagicMock(name="loaded_dll")
         # create=True is required on Linux where ctypes.WinDLL does not exist
-        with patch.object(vxl.platform, "system", return_value="Windows"), \
-             patch.object(vxl.ctypes.util, "find_library", return_value="C:\\vxlapi64.dll"), \
-             patch.object(vxl.ctypes, "WinDLL", return_value=sentinel, create=True) as win_dll:
+        with (
+            patch.object(vxl.platform, "system", return_value="Windows"),
+            patch.object(vxl.ctypes.util, "find_library", return_value="C:\\vxlapi64.dll"),
+            patch.object(vxl.ctypes, "WinDLL", return_value=sentinel, create=True) as win_dll,
+        ):
             result = VectorXLApi._load_dll()
             assert result is sentinel
             win_dll.assert_called_once()
@@ -324,9 +328,11 @@ class TestLoadDll:
                 return None
             return "C:\\vxlapi.dll"
 
-        with patch.object(vxl.platform, "system", return_value="Windows"), \
-             patch.object(vxl.ctypes.util, "find_library", side_effect=fake_find), \
-             patch.object(vxl.ctypes, "WinDLL", return_value=sentinel, create=True):
+        with (
+            patch.object(vxl.platform, "system", return_value="Windows"),
+            patch.object(vxl.ctypes.util, "find_library", side_effect=fake_find),
+            patch.object(vxl.ctypes, "WinDLL", return_value=sentinel, create=True),
+        ):
             result = VectorXLApi._load_dll()
             assert result is sentinel
 
@@ -345,9 +351,11 @@ class TestLoadDll:
                 raise OSError("cannot load")
             return sentinel
 
-        with patch.object(vxl.platform, "system", return_value="Windows"), \
-             patch.object(vxl.ctypes.util, "find_library", side_effect=fake_find), \
-             patch.object(vxl.ctypes, "WinDLL", side_effect=fake_windll, create=True):
+        with (
+            patch.object(vxl.platform, "system", return_value="Windows"),
+            patch.object(vxl.ctypes.util, "find_library", side_effect=fake_find),
+            patch.object(vxl.ctypes, "WinDLL", side_effect=fake_windll, create=True),
+        ):
             result = VectorXLApi._load_dll()
             assert result is sentinel
 
@@ -364,17 +372,21 @@ class TestLoadDll:
                 return sentinel
             raise OSError("not here")
 
-        with patch.object(vxl.platform, "system", return_value="Windows"), \
-             patch.object(vxl.ctypes.util, "find_library", side_effect=fake_find), \
-             patch.object(vxl.ctypes, "WinDLL", side_effect=fake_windll, create=True):
+        with (
+            patch.object(vxl.platform, "system", return_value="Windows"),
+            patch.object(vxl.ctypes.util, "find_library", side_effect=fake_find),
+            patch.object(vxl.ctypes, "WinDLL", side_effect=fake_windll, create=True),
+        ):
             result = VectorXLApi._load_dll()
             assert result is sentinel
 
     def test_all_paths_fail_raises(self):
         """Neither find_library nor fallback paths work."""
-        with patch.object(vxl.platform, "system", return_value="Windows"), \
-             patch.object(vxl.ctypes.util, "find_library", return_value=None), \
-             patch.object(vxl.ctypes, "WinDLL", side_effect=OSError("nope"), create=True):
+        with (
+            patch.object(vxl.platform, "system", return_value="Windows"),
+            patch.object(vxl.ctypes.util, "find_library", return_value=None),
+            patch.object(vxl.ctypes, "WinDLL", side_effect=OSError("nope"), create=True),
+        ):
             with pytest.raises(VectorXLDriverNotFoundError, match="vxlapi.dll not found"):
                 VectorXLApi._load_dll()
 
@@ -395,9 +407,11 @@ class TestLoadDll:
                 return sentinel
             raise OSError("nope")
 
-        with patch.object(vxl.platform, "system", return_value="Windows"), \
-             patch.object(vxl.ctypes.util, "find_library", side_effect=fake_find), \
-             patch.object(vxl.ctypes, "WinDLL", side_effect=fake_windll, create=True):
+        with (
+            patch.object(vxl.platform, "system", return_value="Windows"),
+            patch.object(vxl.ctypes.util, "find_library", side_effect=fake_find),
+            patch.object(vxl.ctypes, "WinDLL", side_effect=fake_windll, create=True),
+        ):
             result = VectorXLApi._load_dll()
             assert result is sentinel
 
@@ -1017,12 +1031,15 @@ class TestInit:
     def test_init_calls_load_and_setup(self):
         """VectorXLApi.__init__ should call _load_dll and _setup_prototypes."""
         fake = FakeDLL()
-        with patch.object(VectorXLApi, "_load_dll", return_value=fake) as mock_load, \
-             patch.object(VectorXLApi, "_setup_prototypes") as mock_setup:
+        with (
+            patch.object(VectorXLApi, "_load_dll", return_value=fake) as mock_load,
+            patch.object(VectorXLApi, "_setup_prototypes") as mock_setup,
+        ):
             api = VectorXLApi()
             mock_load.assert_called_once()
             mock_setup.assert_called_once()
             assert api._dll is fake
+
 
 # ===================================================================
 # 16. dll_path

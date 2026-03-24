@@ -116,9 +116,7 @@ def _scan_for_name_leaks(root: Path, confidential_names: set[str]) -> list[str]:
 def main() -> int:
     """Run the confidentiality checks for the configured git hook mode."""
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--mode", choices=["pre-commit", "pre-push"], default="pre-commit"
-    )
+    parser.add_argument("--mode", choices=["pre-commit", "pre-push"], default="pre-commit")
     args = parser.parse_args()
 
     root = _repo_root()
@@ -157,4 +155,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-

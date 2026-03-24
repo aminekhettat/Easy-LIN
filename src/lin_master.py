@@ -129,7 +129,7 @@ class LINMaster:
     @property
     def dll_path(self) -> Optional[str]:
         """Return the DLL path from the active API connection, or None."""
-        return getattr(self._api, 'dll_path', None)
+        return getattr(self._api, "dll_path", None)
 
     def preflight(self) -> tuple[bool, str]:
         """Verify the Vector XL DLL is callable before a live connection attempt.
@@ -401,4 +401,3 @@ class LINMaster:
                 deadline = time.monotonic() + entry.delay / 1000.0
                 while time.monotonic() < deadline and not self._sched_stop.is_set():
                     time.sleep(0.001)
-

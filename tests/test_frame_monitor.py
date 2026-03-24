@@ -22,6 +22,7 @@ def _panel():
         MockMaster.return_value = master
         MockMaster.list_lin_channels.return_value = []
         from src.gui.communication_panel import CommunicationPanel
+
         return CommunicationPanel()
 
 
@@ -43,7 +44,7 @@ def test_frame_monitor_clear_button_empties_table(qapp):
 def test_export_csv_creates_file(qapp, tmp_path):
     # Existing panel has no CSV export yet; ensure monitor data is serializable-like.
     panel = _panel()
-    frame = ReceivedFrame(frame_id=0x22, data=b"\xAA\xBB", timestamp_ns=1000)
+    frame = ReceivedFrame(frame_id=0x22, data=b"\xaa\xbb", timestamp_ns=1000)
     panel._monitor_add_frame(frame)
     csv_path = tmp_path / "frames.csv"
     with csv_path.open("w", encoding="utf-8") as fh:

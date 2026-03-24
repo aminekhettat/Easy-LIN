@@ -24,7 +24,11 @@ def _panel_with_schedule():
         from src.gui.communication_panel import CommunicationPanel
 
         panel = CommunicationPanel()
-        ldf = LDFFile(schedule_tables=[LDFScheduleTable(name="SchedA", entries=[LDFScheduleEntry("F1", 10.0)])])
+        ldf = LDFFile(
+            schedule_tables=[
+                LDFScheduleTable(name="SchedA", entries=[LDFScheduleEntry("F1", 10.0)])
+            ]
+        )
         panel.load_ldf(ldf)
         return panel, master
 

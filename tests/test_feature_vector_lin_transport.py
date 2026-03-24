@@ -65,24 +65,18 @@ def test_list_vector_channels_no_can_available(monkeypatch) -> None:
 def test_list_vector_channels_returns_configs(monkeypatch) -> None:
     """Ensure channel discovery returns detected Vector configurations."""
     fake_can = SimpleNamespace(
-        detect_available_configs=lambda interfaces: [
-            {"interface": "vector", "channel": 0}
-        ]
+        detect_available_configs=lambda interfaces: [{"interface": "vector", "channel": 0}]
     )
     monkeypatch.setattr(vector_lin, "_CAN_AVAILABLE", True)
     monkeypatch.setattr(vector_lin, "can", fake_can)
 
-    assert VectorLINBus.list_vector_channels() == [
-        {"interface": "vector", "channel": 0}
-    ]
+    assert VectorLINBus.list_vector_channels() == [{"interface": "vector", "channel": 0}]
 
 
 def test_list_vector_channels_handles_detection_error(monkeypatch) -> None:
     """Ensure detection errors are handled by returning an empty list."""
     fake_can = SimpleNamespace(
-        detect_available_configs=lambda interfaces: (_ for _ in ()).throw(
-            RuntimeError("boom")
-        )
+        detect_available_configs=lambda interfaces: (_ for _ in ()).throw(RuntimeError("boom"))
     )
     monkeypatch.setattr(vector_lin, "_CAN_AVAILABLE", True)
     monkeypatch.setattr(vector_lin, "can", fake_can)
@@ -108,9 +102,7 @@ def test_start_vector_success_path(monkeypatch) -> None:
             """Provide a no-op shutdown method."""
             pass
 
-    fake_can = SimpleNamespace(
-        interface=SimpleNamespace(Bus=lambda **kwargs: FakeBus(**kwargs))
-    )
+    fake_can = SimpleNamespace(interface=SimpleNamespace(Bus=lambda **kwargs: FakeBus(**kwargs)))
     monkeypatch.setattr(vector_lin, "_CAN_AVAILABLE", True)
     monkeypatch.setattr(vector_lin, "can", fake_can)
 

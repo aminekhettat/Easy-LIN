@@ -1,4 +1,4 @@
-﻿"""Hierarchical LDF viewer widget for the Qt frontend.
+"""Hierarchical LDF viewer widget for the Qt frontend.
 
 Displays the parsed LDF content as a single expandable tree where values and
 attributes are directly visible under each node.
@@ -63,6 +63,8 @@ class LDFViewer(QWidget):
         super().__init__(parent)
         self._ldf = ldf
         self._suppress_toggle_announcements = False
+        self._deferred_reanchor_timer_id: int | None = None
+        self._deferred_reanchor_item: QTreeWidgetItem | None = None
         self._debug_tree = os.environ.get("EASYLIN_DEBUG_TREE", "0").lower() in {
             "1",
             "true",
@@ -180,9 +182,25 @@ class LDFViewer(QWidget):
     def eventFilter(self, obj, event):
         """Stabilize keyboard navigation to avoid focus jumps on branch toggles."""
         if obj is self._tree and event.type() == QEvent.Type.KeyPress:
+            # Cancel any pending deferred re-anchor callback before processing new keys.
+            # This prevents race conditions when Left-Right-Left sequences execute too fast.
+            if self._deferred_reanchor_timer_id is not None:
+                self.killTimer(self._deferred_reanchor_timer_id)
+                self._deferred_reanchor_timer_id = None
+
             current = self._tree.currentItem()
             if current is None:
                 return super().eventFilter(obj, event)
+
+            # If current item ended up inside a collapsed branch (possible after
+            # mixed mouse/keyboard interactions), re-anchor navigation to the
+            # nearest visible ancestor before processing movement keys.
+            anchor = self._visible_navigation_anchor(current)
+            if anchor is not current:
+                self._debug_tree_event("Normalize-hidden-current", anchor)
+                self._tree.setCurrentItem(anchor)
+                self._tree.scrollToItem(anchor, QAbstractItemView.ScrollHint.EnsureVisible)
+                current = anchor
 
             self._debug_tree_event("KeyPress", current, key=event.key())
 
@@ -190,27 +208,68 @@ class LDFViewer(QWidget):
                 if self._toggle_current_checkable_node(current):
                     return True
 
+            if (
+                event.key() == Qt.Key.Key_Down
+                and event.modifiers() == Qt.KeyboardModifier.NoModifier
+            ):
+                target = self._next_navigation_item(current)
+                if target is not None:
+                    self._debug_tree_event("Down-next-item", target)
+                    self._select_and_reveal_item(target)
+                    self._announce_navigation_target(target)
+                else:
+                    self._announce_status("No next hierarchy item at this level.")
+                return True
+
+            if event.key() == Qt.Key.Key_Up and event.modifiers() == Qt.KeyboardModifier.NoModifier:
+                target = self._previous_navigation_item(current)
+                if target is not None:
+                    self._debug_tree_event("Up-previous-item", target)
+                    self._select_and_reveal_item(target)
+                    self._announce_navigation_target(target)
+                else:
+                    self._announce_status("No previous hierarchy item at this level.")
+                return True
+
             if event.key() == Qt.Key.Key_Right:
-                # Right: expand current branch and keep focus anchored on it.
+                # Right: expand current branch, then use it again to enter the first child.
                 if current.childCount() > 0 and not current.isExpanded():
                     self._debug_tree_event("Right-expand", current)
+                    # Suppress the toggle announcement so only keyboard-driven feedback is heard.
+                    self._suppress_toggle_announcements = True
                     self._tree.expandItem(current)
+                    self._suppress_toggle_announcements = False
                     return True
                 if current.childCount() > 0:
-                    self._debug_tree_event("Right-keep-current", current)
-                    return True
+                    child = current.child(0)
+                    self._debug_tree_event("Right-first-child", child)
+                    self._select_and_reveal_item(child)
+                    self._announce_navigation_target(child)
+                return True  # Always consume Right (leaf nodes too)
 
             if event.key() == Qt.Key.Key_Left:
                 # Left: collapse current branch; if already collapsed, go to parent.
                 if current.childCount() > 0 and current.isExpanded():
                     self._debug_tree_event("Left-collapse", current)
+                    # Suppress the toggle announcement so only the reanchor announcement is heard.
+                    self._suppress_toggle_announcements = True
                     self._tree.collapseItem(current)
+                    self._suppress_toggle_announcements = False
+                    # Assistive technologies may shift focus when the accessibility
+                    # tree changes during collapse. Re-anchor one event loop later.
+                    # Store the current item reference for the deferred callback.
+                    self._deferred_reanchor_item = current
+                    # Cancel any previous timer and start a new one.
+                    if self._deferred_reanchor_timer_id is not None:
+                        self.killTimer(self._deferred_reanchor_timer_id)
+                    self._deferred_reanchor_timer_id = self.startTimer(0)
                     return True
                 parent = current.parent()
                 if parent is not None:
                     self._debug_tree_event("Left-go-parent", parent)
                     self._select_and_reveal_item(parent)
-                    return True
+                    self._announce_navigation_target(parent)
+                return True  # Always consume Left (top-level collapsed nodes too)
 
             # Alt+Down: next sibling
             if (
@@ -221,6 +280,7 @@ class LDFViewer(QWidget):
                 if sibling is not None:
                     self._debug_tree_event("Alt-Down-sibling", sibling)
                     self._select_and_reveal_item(sibling)
+                    self._announce_navigation_target(sibling)
                 return True
 
             # Alt+Up: previous sibling
@@ -229,9 +289,21 @@ class LDFViewer(QWidget):
                 if sibling is not None:
                     self._debug_tree_event("Alt-Up-sibling", sibling)
                     self._select_and_reveal_item(sibling)
+                    self._announce_navigation_target(sibling)
                 return True
 
         return super().eventFilter(obj, event)
+
+    def timerEvent(self, event):
+        """Handle timer events for deferred re-anchor callback after collapse."""
+        if event.timerId() == self._deferred_reanchor_timer_id:
+            self.killTimer(self._deferred_reanchor_timer_id)
+            self._deferred_reanchor_timer_id = None
+            if self._deferred_reanchor_item is not None:
+                self._reanchor_after_collapse(self._deferred_reanchor_item)
+                self._deferred_reanchor_item = None
+        else:
+            super().timerEvent(event)
 
     def _toggle_current_checkable_node(self, item: QTreeWidgetItem) -> bool:
         """Toggle one checkable node from the keyboard, honoring lock state."""
@@ -255,20 +327,38 @@ class LDFViewer(QWidget):
         self._tree.scrollToItem(item, QAbstractItemView.ScrollHint.PositionAtCenter)
         self._debug_tree_event("SelectReveal", item)
 
+    def _reanchor_after_collapse(self, item: QTreeWidgetItem) -> None:
+        """Re-assert tree focus and current item one event loop after a collapse.
+
+        Assistive technologies may shift OS focus when the accessibility tree
+        shrinks during collapse.  This deferred call overrides that shift so
+        keyboard navigation resumes from the collapsed branch without requiring
+        Page Down. The screen reader is then told the new position.
+        """
+        self._tree.setFocus(Qt.FocusReason.OtherFocusReason)
+        self._tree.setCurrentItem(item)
+        self._tree.scrollToItem(item, QAbstractItemView.ScrollHint.EnsureVisible)
+        # Announce the position so the screen reader knows where we landed.
+        self._announce_navigation_target(item)
+
     def _on_item_expanded(self, item: QTreeWidgetItem) -> None:
         """Keep focus on expanded item and announce the open action."""
         if self._suppress_toggle_announcements:
             return
         self._debug_tree_event("Expanded-signal", item)
-        self._select_and_reveal_item(item)
+        self._tree.setFocus(Qt.FocusReason.OtherFocusReason)
+        self._tree.setCurrentItem(item)
+        self._tree.scrollToItem(item, QAbstractItemView.ScrollHint.EnsureVisible)
         self._announce_tree_toggle("Opened", item)
 
     def _on_item_collapsed(self, item: QTreeWidgetItem) -> None:
-        """Keep focus on collapsed item and announce the close action."""
+        """Keep focus on collapsed item without jarring viewport repositioning."""
         if self._suppress_toggle_announcements:
             return
         self._debug_tree_event("Collapsed-signal", item)
-        self._select_and_reveal_item(item)
+        self._tree.setFocus(Qt.FocusReason.OtherFocusReason)
+        self._tree.setCurrentItem(item)
+        self._tree.scrollToItem(item, QAbstractItemView.ScrollHint.EnsureVisible)
         self._announce_tree_toggle("Closed", item)
 
     def _on_current_item_changed(
@@ -276,9 +366,13 @@ class LDFViewer(QWidget):
         current: QTreeWidgetItem | None,
         _previous: QTreeWidgetItem | None,
     ) -> None:
-        """Keep the focused row visible and update breadcrumb + position announcement."""
+        """Update breadcrumb and accessibility when the current item changes.
+
+        Scrolling is handled exclusively by _select_and_reveal_item (keyboard
+        navigation) and the expand/collapse handlers so the viewport is never
+        repositioned by passive selection changes such as mouse clicks.
+        """
         if current is not None:
-            self._tree.scrollToItem(current, QAbstractItemView.ScrollHint.PositionAtCenter)
             self._debug_tree_event("CurrentChanged", current)
             self._update_breadcrumb(current)
             self._fire_accessible_event(current)
@@ -423,6 +517,45 @@ class LDFViewer(QWidget):
         return None
 
     @staticmethod
+    def _visible_navigation_anchor(item: QTreeWidgetItem) -> QTreeWidgetItem:
+        """Return the nearest visible ancestor usable as a navigation anchor."""
+        node = item
+        while node.parent() is not None and not node.parent().isExpanded():
+            node = node.parent()
+        return node
+
+    @classmethod
+    def _next_navigation_item(cls, item: QTreeWidgetItem) -> QTreeWidgetItem | None:
+        """Return the next item in depth-first visual order.
+
+        If the current item is expanded and has children the first child is
+        returned (depth-first descent).  Otherwise the traversal walks up the
+        tree until a next sibling is found, mirroring the linear reading order
+        used by screen readers.
+        """
+        if item.isExpanded() and item.childCount() > 0:
+            return item.child(0)
+        node = item
+        while node is not None:
+            sibling = cls._next_sibling(node)
+            if sibling is not None:
+                return sibling
+            node = node.parent()
+        return None
+
+    @classmethod
+    def _last_visible_descendant(cls, item: QTreeWidgetItem) -> QTreeWidgetItem:
+        """Return the last visible descendant of an item in depth-first order.
+
+        Walks to the last child of each expanded item until a collapsed node or
+        a leaf is reached.  Used by Up-key navigation to land on the deepest
+        visible item inside the preceding branch.
+        """
+        while item.isExpanded() and item.childCount() > 0:
+            item = item.child(item.childCount() - 1)
+        return item
+
+    @staticmethod
     def _previous_sibling(item: QTreeWidgetItem) -> QTreeWidgetItem | None:
         """Return the previous sibling of the given item, or None."""
         parent = item.parent()
@@ -438,6 +571,29 @@ class LDFViewer(QWidget):
         if idx > 0:
             return parent.child(idx - 1)
         return None
+
+    @classmethod
+    def _previous_navigation_item(cls, item: QTreeWidgetItem) -> QTreeWidgetItem | None:
+        """Return the previous item in depth-first visual order.
+
+        When a previous sibling exists the traversal descends into its last
+        visible descendant so Up-arrow mirrors the reverse of Down-arrow.
+        When there is no previous sibling the parent branch is returned.
+        """
+        sibling = cls._previous_sibling(item)
+        if sibling is not None:
+            return cls._last_visible_descendant(sibling)
+        return item.parent()
+
+    def _announce_navigation_target(self, item: QTreeWidgetItem) -> None:
+        """Send concise speech-friendly feedback for keyboard navigation targets."""
+        parts = [item.text(0)]
+        position = self._sibling_position(item)
+        if position:
+            parts.append(position)
+        if item.childCount() > 0:
+            parts.append("expanded" if item.isExpanded() else "collapsed")
+        self._announce_status(". ".join(parts))
 
     # ------------------------------------------------------------------
     # Expand/collapse subtree
@@ -649,16 +805,8 @@ class LDFViewer(QWidget):
                 ("Bit offset", str(ref.bit_offset)),
                 ("Size", f"{sig.size} bit"),
                 ("Initial value", str(sig.init_value)),
-                ("Publisher", sig.publisher),
                 ("Subscribers", ", ".join(sig.subscribers) or "none"),
             ]
-            if context_node is not None:
-                if sig.publisher == context_node:
-                    props.append(("Direction", "TX (Publisher)"))
-                elif context_node in sig.subscribers:
-                    props.append(("Direction", "RX (Subscriber)"))
-                else:
-                    props.append(("Direction", "Observer (no direct link)"))
             self._add_property_nodes(sig_item, props)
             self._add_encoding_details(sig_item, enc_name, encoding_lookup)
 
@@ -673,6 +821,35 @@ class LDFViewer(QWidget):
         signal_encoding = self._build_signal_encoding_map()
         encoding_lookup = self._build_encoding_lookup()
         periodicity_map = self._build_periodicity_map()
+        node_attributes_by_name = {attr.node_name: attr for attr in ldf.node_attributes}
+
+        def _add_node_attributes(node_item: QTreeWidgetItem, node_name: str) -> None:
+            """Attach parsed Node_attributes data under one node when available."""
+            attr = node_attributes_by_name.get(node_name)
+            if attr is None:
+                return
+            self._add_property_nodes(
+                node_item,
+                [
+                    ("LIN protocol", attr.lin_protocol or "not set"),
+                    ("Configured NAD", str(attr.configured_nad)),
+                    ("Initial NAD", str(attr.initial_nad)),
+                    (
+                        "Product ID",
+                        f"{attr.product_id_supplier}, {attr.product_id_function}, {attr.product_id_variant}",
+                    ),
+                    ("Response error signal", attr.response_error or "not set"),
+                    ("P2 min", f"{attr.p2_min} ms"),
+                    ("ST min", f"{attr.st_min} ms"),
+                    ("N_As timeout", f"{attr.n_as_timeout} ms"),
+                    ("N_Cr timeout", f"{attr.n_cr_timeout} ms"),
+                ],
+            )
+            cfg = self._add_item(node_item, "Configurable frames")
+            if not attr.configurable_frames:
+                self._add_item(cfg, "none")
+            for frame_name in attr.configurable_frames:
+                self._add_item(cfg, frame_name)
 
         root = self._add_item(self._tree, "LDF cluster", ldf.source_path or "", bold=True)
 
@@ -689,7 +866,7 @@ class LDFViewer(QWidget):
 
         nodes = self._add_item(root, "Nodes", "", bold=True)
         if ldf.nodes:
-            master = self._add_item(nodes, f"Master: {ldf.nodes.master.name}")
+            master = self._add_item(nodes, f"Master (1): {ldf.nodes.master.name}")
             master.setFlags(master.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             master.setCheckState(0, Qt.CheckState.Checked)
             master.setToolTip(0, "LIN master node — always active in the communication session.")
@@ -702,38 +879,8 @@ class LDFViewer(QWidget):
                     ("Jitter", f"{ldf.nodes.master.jitter} ms"),
                 ],
             )
-            master_name = ldf.nodes.master.name
-            master_frames = self._add_item(master, "Published frames")
-            master_related = [f for f in ldf.frames if f.publisher == master_name]
-            if not master_related:
-                self._add_item(master_frames, "none")
-            for frame in master_related:
-                pid = self._lin_protected_id(frame.frame_id)
-                frame_item = self._add_item(
-                    master_frames,
-                    frame.name,
-                    f"0x{frame.frame_id:02X} ({frame.frame_size} byte(s))",
-                )
-                periods = periodicity_map.get(frame.name, [])
-                period_text = (
-                    ", ".join(f"{d} ms [{t}]" for t, d in periods) if periods else "not scheduled"
-                )
-                self._add_property_nodes(
-                    frame_item,
-                    [
-                        ("Frame ID", f"0x{frame.frame_id:02X} ({frame.frame_id} decimal)"),
-                        ("Protected ID (PID)", f"0x{pid:02X} ({pid} decimal)"),
-                        ("Publisher", frame.publisher),
-                        ("Direction", "TX (Master publishes)"),
-                        ("Frame size", f"{frame.frame_size} byte(s)"),
-                        ("Periodicity", period_text),
-                    ],
-                )
-                self._add_frame_signal_details(
-                    frame_item, frame, signal_encoding, encoding_lookup, context_node=master_name
-                )
-
-            slaves = self._add_item(nodes, "Slaves")
+            _add_node_attributes(master, ldf.nodes.master.name)
+            slaves = self._add_item(nodes, f"Slaves ({len(ldf.nodes.slaves)})")
             for slave in ldf.nodes.slaves:
                 slave_item = self._add_item(slaves, slave)
                 slave_item.setFlags(slave_item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
@@ -742,6 +889,7 @@ class LDFViewer(QWidget):
                     0, "Uncheck to exclude this slave from the communication session."
                 )
                 self._slave_check_items.append(slave_item)
+                _add_node_attributes(slave_item, slave)
                 slave_frames = self._add_item(slave_item, "Related frames")
                 related_frames = [
                     frame for frame in ldf.frames if self._frame_related_to_slave(frame.name, slave)
@@ -813,81 +961,6 @@ class LDFViewer(QWidget):
             )
             self._add_frame_signal_details(frame_item, frame, signal_encoding, encoding_lookup)
 
-        non_diag_frames = [f for f in ldf.frames if not self._is_diagnostic_frame_id(f.frame_id)]
-        frames = self._add_item(root, f"Frames ({len(non_diag_frames)})", "", bold=True)
-        for frame in non_diag_frames:
-            pid = self._lin_protected_id(frame.frame_id)
-            periods = periodicity_map.get(frame.name, [])
-            period_text = (
-                ", ".join(f"{d} ms [{t}]" for t, d in periods) if periods else "not scheduled"
-            )
-            frame_item = self._add_item(frames, frame.name)
-            self._add_property_nodes(
-                frame_item,
-                [
-                    ("Frame ID", f"0x{frame.frame_id:02X} ({frame.frame_id} decimal)"),
-                    ("Protected ID (PID)", f"0x{pid:02X} ({pid} decimal)"),
-                    ("Publisher", frame.publisher),
-                    ("Frame size", f"{frame.frame_size} byte(s)"),
-                    ("Periodicity", period_text),
-                ],
-            )
-            self._add_frame_signal_details(frame_item, frame, signal_encoding, encoding_lookup)
-
-        rep_map: dict[str, list[str]] = {}
-        for rep in ldf.signal_representations:
-            rep_map.setdefault(rep.encoding_type, []).extend(rep.signals)
-
-        encodings = self._add_item(
-            root,
-            f"Encoding types ({len(ldf.encoding_types)})",
-            "",
-            bold=True,
-        )
-        for enc in ldf.encoding_types:
-            enc_item = self._add_item(encodings, enc.name)
-            self._add_property_nodes(
-                enc_item,
-                [
-                    ("BCD", "yes" if enc.bcd else "no"),
-                    ("ASCII", "yes" if enc.ascii else "no"),
-                    (
-                        "Applied signals",
-                        ", ".join(rep_map.get(enc.name, [])) or "none",
-                    ),
-                ],
-            )
-
-            logical_root = self._add_item(enc_item, "Logical values")
-            for lv in enc.logical_values:
-                lv_item = self._add_item(logical_root, str(lv.signal_value), lv.text)
-                self._add_property_nodes(lv_item, [("Text", lv.text)])
-
-            physical_root = self._add_item(enc_item, "Physical ranges")
-            for pr in enc.physical_ranges:
-                unit = pr.unit if pr.unit else "none"
-                pr_item = self._add_item(physical_root, f"{pr.min_value}..{pr.max_value}")
-                self._add_property_nodes(
-                    pr_item,
-                    [
-                        ("Scale", str(pr.scale)),
-                        ("Offset", str(pr.offset)),
-                        ("Unit", unit),
-                        ("Formula", f"physical = (raw * {pr.scale}) + {pr.offset}"),
-                    ],
-                )
-
-        reps = self._add_item(
-            root,
-            f"Signal representations ({len(ldf.signal_representations)})",
-            "",
-            bold=True,
-        )
-        for rep in ldf.signal_representations:
-            rep_item = self._add_item(reps, rep.encoding_type)
-            for sig_name in rep.signals:
-                self._add_item(rep_item, sig_name)
-
         schedules = self._add_item(
             root,
             f"Schedule tables ({len(ldf.schedule_tables)})",
@@ -909,35 +982,6 @@ class LDFViewer(QWidget):
                     ],
                 )
 
-        attrs = self._add_item(
-            root,
-            f"Node attributes ({len(ldf.node_attributes)})",
-            "",
-            bold=True,
-        )
-        for attr in ldf.node_attributes:
-            attr_item = self._add_item(attrs, attr.node_name)
-            self._add_property_nodes(
-                attr_item,
-                [
-                    ("LIN protocol", attr.lin_protocol or "not set"),
-                    ("Configured NAD", str(attr.configured_nad)),
-                    ("Initial NAD", str(attr.initial_nad)),
-                    (
-                        "Product ID",
-                        f"{attr.product_id_supplier}, {attr.product_id_function}, {attr.product_id_variant}",
-                    ),
-                    ("Response error signal", attr.response_error or "not set"),
-                    ("P2 min", f"{attr.p2_min} ms"),
-                    ("ST min", f"{attr.st_min} ms"),
-                    ("N_As timeout", f"{attr.n_as_timeout} ms"),
-                    ("N_Cr timeout", f"{attr.n_cr_timeout} ms"),
-                ],
-            )
-            cfg = self._add_item(attr_item, "Configurable frames")
-            for frame_name in attr.configurable_frames:
-                self._add_item(cfg, frame_name)
-
         # Expand all levels so every signal attribute and encoding detail is reachable
         # immediately via keyboard without any manual expand step.
         self._suppress_toggle_announcements = True
@@ -954,7 +998,7 @@ class LDFViewer(QWidget):
 
     def _on_node_item_changed(self, item: QTreeWidgetItem, column: int) -> None:
         """Enforce checkbox invariants and emit selection changes."""
-        if self._in_populate or self._node_selection_locked or column != 0:
+        if self._in_populate or column != 0:
             return
         if item is self._master_check_item:
             if item.checkState(0) != Qt.CheckState.Checked:
@@ -962,20 +1006,28 @@ class LDFViewer(QWidget):
                 item.setCheckState(0, Qt.CheckState.Checked)
                 self._tree.blockSignals(False)
             return
-        if item not in self._slave_check_items:
+        if item in self._slave_check_items:
+            if self._node_selection_locked:
+                return
+            master, slaves = self.selected_nodes()
+            if master is not None:
+                action = "Selected" if item.checkState(0) == Qt.CheckState.Checked else "Excluded"
+                if slaves:
+                    self._announce_status(
+                        f"{action} slave {item.text(0)}. {len(slaves)} slave(s) currently selected."
+                    )
+                else:
+                    self._announce_status(
+                        "No slave selected. Select at least one slave before connecting."
+                    )
+                self.node_selection_changed.emit(master, slaves)
             return
-        master, slaves = self.selected_nodes()
-        if master is not None:
-            action = "Selected" if item.checkState(0) == Qt.CheckState.Checked else "Excluded"
-            if slaves:
-                self._announce_status(
-                    f"{action} slave {item.text(0)}. {len(slaves)} slave(s) currently selected."
-                )
-            else:
-                self._announce_status(
-                    "No slave selected. Select at least one slave before connecting."
-                )
-            self.node_selection_changed.emit(master, slaves)
+        # Any other item: silently revert any accidental check state change so
+        # non-master/slave rows can never appear checked in the tree.
+        if item.checkState(0) != Qt.CheckState.Unchecked:
+            self._tree.blockSignals(True)
+            item.setCheckState(0, Qt.CheckState.Unchecked)
+            self._tree.blockSignals(False)
 
     def selected_nodes(self) -> tuple[str | None, list[str]]:
         """Return (master_name, [checked_slave_names]) from checkbox state."""

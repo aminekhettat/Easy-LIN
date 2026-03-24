@@ -57,7 +57,11 @@ def evaluate_main_window_automatic_rgaa(main_window) -> RGAAAutoComplianceReport
     ]
     checks.append(all(shortcut is not None for shortcut in shortcuts))
     checks.append(
-        all(shortcut.context() == Qt.ShortcutContext.ApplicationShortcut for shortcut in shortcuts if shortcut)
+        all(
+            shortcut.context() == Qt.ShortcutContext.ApplicationShortcut
+            for shortcut in shortcuts
+            if shortcut
+        )
     )
 
     # Ensure no single-character shortcut exists among main shortcuts.

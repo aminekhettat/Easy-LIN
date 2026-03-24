@@ -1,22 +1,22 @@
 # Easy-LIN
 
-Current release: 0.7.2
+Current release: 0.8.0
 
-Planned next patch release: 0.7.3
+Planned next patch release: 0.8.1
 
-Planned next minor release: 0.8.0
+Planned next minor release: 0.9.0
 
 ## Automated Version Bump
 
 Easy-LIN uses `bump2version` to increment the project subversion consistently across runtime and documentation anchors.
 
-Patch bump (for example 0.7.2 -> 0.7.3):
+Patch bump (for example 0.8.0 -> 0.8.1):
 
 ```bash
 bump2version patch
 ```
 
-Minor bump (for example 0.7.x -> 0.8.0):
+Minor bump (for example 0.8.x -> 0.9.0):
 
 ```bash
 bump2version minor
