@@ -33,7 +33,7 @@ import os
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QEvent, QTimerEvent
 from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import QApplication
 
@@ -885,6 +885,89 @@ def test_qt_tree_right_key_on_leaf_node_does_not_lose_focus(
 
     assert consumed
     assert viewer._tree.currentItem() is leaf  # stays on the leaf
+
+
+def test_qt_tree_normalizes_hidden_current_item_before_key_navigation(
+    qapp: QApplication,
+    sample_ldf_text: str,
+) -> None:
+    """Ensure key handling re-anchors a hidden current item to a visible anchor first."""
+    ldf = parse_ldf_string(sample_ldf_text)
+    viewer = LDFViewer(ldf)
+    viewer.show()
+
+    root = viewer._tree.topLevelItem(0)
+    hidden = root.child(0).child(0)
+    viewer._tree.setCurrentItem(hidden)
+    qapp.processEvents()
+
+    # Force the event-filter normalization branch (anchor != current).
+    viewer._visible_navigation_anchor = lambda _item: root  # type: ignore[assignment]
+    event = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_A, Qt.KeyboardModifier.NoModifier)
+    QApplication.sendEvent(viewer._tree, event)
+    qapp.processEvents()
+
+    assert viewer._tree.currentItem() is root
+
+
+def test_qt_tree_visible_navigation_anchor_walks_up_collapsed_ancestors(
+    qapp: QApplication,
+    sample_ldf_text: str,
+) -> None:
+    """Ensure hidden descendants resolve to the nearest visible collapsed ancestor."""
+    ldf = parse_ldf_string(sample_ldf_text)
+    viewer = LDFViewer(ldf)
+    viewer.show()
+
+    root = viewer._tree.topLevelItem(0)
+    header = root.child(0)
+    leaf = header.child(0)
+    viewer._tree.collapseItem(header)
+
+    anchor = viewer._visible_navigation_anchor(leaf)
+    assert anchor is header
+
+
+def test_qt_tree_left_collapse_replaces_existing_deferred_reanchor_timer(
+    qapp: QApplication,
+    sample_ldf_text: str,
+) -> None:
+    """Ensure Left-collapse cancels an existing deferred timer before scheduling a new one."""
+    ldf = parse_ldf_string(sample_ldf_text)
+    viewer = LDFViewer(ldf)
+    viewer.show()
+
+    root = viewer._tree.topLevelItem(0)
+    nodes = root.child(1)
+    viewer._tree.expandItem(nodes)
+    viewer._tree.setCurrentItem(nodes)
+    qapp.processEvents()
+
+    previous_timer = viewer.startTimer(1000)
+    viewer._deferred_reanchor_timer_id = previous_timer
+
+    left = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Left, Qt.KeyboardModifier.NoModifier)
+    QApplication.sendEvent(viewer._tree, left)
+
+    assert viewer._deferred_reanchor_timer_id is not None
+    assert viewer._deferred_reanchor_timer_id != previous_timer
+
+    # Cleanup the newly scheduled deferred timer to avoid side effects.
+    viewer.killTimer(viewer._deferred_reanchor_timer_id)
+    viewer._deferred_reanchor_timer_id = None
+
+
+def test_qt_tree_timer_event_passes_unknown_timer_to_super(
+    qapp: QApplication,
+    sample_ldf_text: str,
+) -> None:
+    """Ensure timerEvent delegates unknown timer IDs to QObject timer handling."""
+    ldf = parse_ldf_string(sample_ldf_text)
+    viewer = LDFViewer(ldf)
+    viewer.show()
+
+    # Must not raise; executes the non-deferred timerEvent branch.
+    viewer.timerEvent(QTimerEvent(424242))
 
 
 def test_qt_tree_space_toggles_slave_check_state(

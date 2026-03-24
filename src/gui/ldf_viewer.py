@@ -259,9 +259,7 @@ class LDFViewer(QWidget):
                     # tree changes during collapse. Re-anchor one event loop later.
                     # Store the current item reference for the deferred callback.
                     self._deferred_reanchor_item = current
-                    # Cancel any previous timer and start a new one.
-                    if self._deferred_reanchor_timer_id is not None:
-                        self.killTimer(self._deferred_reanchor_timer_id)
+                    # A previous deferred timer was already cancelled at key-press entry.
                     self._deferred_reanchor_timer_id = self.startTimer(0)
                     return True
                 parent = current.parent()

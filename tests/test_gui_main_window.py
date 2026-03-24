@@ -938,6 +938,31 @@ class TestAnnounceEvent:
     def test_announce_event_warning(self, main_window):
         main_window._announce_event("Warning: low battery")
 
+    def test_announce_event_assertive_handles_accessibility_backend_failure(
+        self, main_window, monkeypatch
+    ):
+        """Assertive announcements must never crash when accessibility backend fails."""
+        monkeypatch.setattr(
+            "src.gui.main_window_qt.QAccessible.updateAccessibility",
+            MagicMock(side_effect=RuntimeError("backend unavailable")),
+        )
+
+        main_window._announce_event("Parse successful", assertive=True)
+        assert "Parse successful" in main_window._sb_event.text()
+
+    def test_focus_ldf_tree_silent_falls_back_to_generic_widget_focus(
+        self, main_window, monkeypatch
+    ):
+        """When central widget is not an LDF viewer, silent focus helper still focuses it."""
+        generic = QLabel("generic")
+        generic.show()
+        monkeypatch.setattr(main_window, "centralWidget", lambda: generic)
+
+        main_window._focus_ldf_tree_silent()
+        QApplication.processEvents()
+
+        assert generic.hasFocus()
+
     def test_set_comm_status(self, main_window):
         main_window._set_comm_status("Connected")
         assert "Connected" in main_window._sb_comm.text()

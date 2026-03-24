@@ -57,7 +57,7 @@ log = logging.getLogger(__name__)
 
 APP_NAME = "Easy-LIN"
 APP_ORG = "Easy-LIN"
-APP_VERSION = "0.8.1"
+APP_VERSION = "0.8.2"
 APP_AUTHOR = "Amine Khettat"
 APP_COMPANY = "BLIND SYSTEMS"
 APP_CONTACT_EMAIL = "contact@blindsystems.org"
