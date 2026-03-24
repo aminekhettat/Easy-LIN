@@ -1,10 +1,37 @@
 # Easy-LIN
 
-Current release: 0.7.1
+Current release: 0.7.2
 
-Planned next patch release: 0.7.2
+Planned next patch release: 0.7.3
 
 Planned next minor release: 0.8.0
+
+## Automated Version Bump
+
+Easy-LIN uses `bump2version` to increment the project subversion consistently across runtime and documentation anchors.
+
+Patch bump (for example 0.7.2 -> 0.7.3):
+
+```bash
+bump2version patch
+```
+
+Minor bump (for example 0.7.x -> 0.8.0):
+
+```bash
+bump2version minor
+```
+
+Major bump:
+
+```bash
+bump2version major
+```
+
+Notes:
+
+- Version automation config is in `.bumpversion.cfg`.
+- This updates only canonical version anchors. Keep release roadmap lines (like "Planned next patch release") aligned during release preparation.
 
 Easy-LIN is a Python engineering tool for LIN (Local Interconnect Network), built with PySide6 (Qt 6).
 
