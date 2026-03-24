@@ -1,5 +1,7 @@
 [run]
 source = src
+omit =
+	src/ldf/*
 
 [report]
 fail_under = 100

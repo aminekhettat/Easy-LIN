@@ -7,7 +7,7 @@ Project Metadata
 - Author: Amine Khettat
 - Company: BLIND SYSTEMS
 - Website: https://www.blindsystems.org
-- Version: 0.7.0
+- Version: 0.7.1
 
 Main Capabilities
 -----------------
@@ -36,7 +36,7 @@ Primary Engineering Objective
 - Maintain deterministic behavior through explicit runtime safeguards and
   status tracking.
 
-Runtime and Selection Safeguards (0.7.0)
+Runtime and Selection Safeguards (0.7.1)
 ----------------------------------------
 
 - Single-instance guard prevents launching a second Easy-LIN process.
@@ -44,7 +44,7 @@ Runtime and Selection Safeguards (0.7.0)
 - Node checkbox selection is locked while communication is connected.
 - Node checkbox selection is unlocked when communication returns to disconnected state.
 
-Accessibility Support (0.7.0)
+Accessibility Support (0.7.1)
 -----------------------------
 
 Accessibility is implemented as a dedicated support layer on top of the core
@@ -62,8 +62,8 @@ technical workflows above.
 Release Roadmap
 ---------------
 
-- Current release: 0.7.0
-- Next patch release: 0.7.1, focused on runtime diagnostics, integrity checks, and troubleshooting guidance
+- Current release: 0.7.1
+- Next patch release: 0.7.2, focused on runtime diagnostics, integrity checks, and troubleshooting guidance
 - Next minor release: 0.8.0, focused on the next larger communication workflow increment after the 0.7.x hardening line
 
 LIN Runtime Workflows

@@ -4,11 +4,11 @@ Easy-LIN Documentation
 Easy-LIN is a Python application for LIN engineering, built with PySide6.
 The documentation below focuses first on technical scope: LDF parsing,
 hierarchy inspection, LIN communication workflows, runtime behavior, and API
-surfaces for version 0.7.0.
+surfaces for version 0.7.1.
 
 Planned releases:
 
-- 0.7.1 for runtime hardening and diagnostics
+- 0.7.2 for runtime hardening and diagnostics
 - 0.8.0 for the next larger communication workflow increment
 
 The communication panel is now a separate window (View > Communication

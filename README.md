@@ -1,8 +1,8 @@
 # Easy-LIN
 
-Current release: 0.7.0
+Current release: 0.7.1
 
-Planned next patch release: 0.7.1
+Planned next patch release: 0.7.2
 
 Planned next minor release: 0.8.0
 

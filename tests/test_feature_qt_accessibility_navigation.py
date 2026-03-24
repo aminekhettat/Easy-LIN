@@ -9,6 +9,7 @@ Atomic features covered:
 - Keep Right-arrow expansion anchored on current item (no forced jump)
 - Announce opened/closed hierarchy rows for non-visual feedback
 - Toggle checkable communication nodes from keyboard (Space/Enter)
+- Ignore Space/Enter on non-checkable rows and announce lock state when selection is locked
 - Allow temporary zero-slave selection with clear guidance for connection step
 - Focus hierarchy tree directly after LDF load
 - Provide deterministic region focus and region-cycling behavior
@@ -494,6 +495,49 @@ def test_qt_tree_can_uncheck_all_slaves_and_reports_empty_selection(
     assert slaves == []
     assert emitted
     assert emitted[-1] == ("M", [])
+
+
+def test_qt_tree_space_is_ignored_for_non_checkable_row(
+    qapp: QApplication,
+    sample_ldf_text: str,
+) -> None:
+    """Ensure non-checkable rows are ignored by the keyboard toggle helper."""
+    ldf = parse_ldf_string(sample_ldf_text)
+    viewer = LDFViewer(ldf)
+
+    non_checkable = viewer._tree.topLevelItem(0)
+    non_checkable.setFlags(non_checkable.flags() & ~Qt.ItemFlag.ItemIsUserCheckable)
+
+    assert viewer._toggle_current_checkable_node(non_checkable) is False
+
+
+def test_qt_tree_space_announces_when_selection_is_locked(
+    monkeypatch: pytest.MonkeyPatch,
+    qapp: QApplication,
+    sample_ldf_text: str,
+) -> None:
+    """Ensure keyboard toggles announce lock state when communication lock is active."""
+    ldf = parse_ldf_string(sample_ldf_text)
+    viewer = LDFViewer(ldf)
+    viewer.show()
+
+    root = viewer._tree.topLevelItem(0)
+    nodes = root.child(1)
+    slaves_root = nodes.child(1)
+    slave_item = slaves_root.child(0)
+
+    messages: list[str] = []
+    monkeypatch.setattr(viewer, "_announce_status", lambda message: messages.append(message))
+
+    viewer.lock_node_selection(True)
+    viewer._tree.setCurrentItem(slave_item)
+    event = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Space, Qt.KeyboardModifier.NoModifier)
+    QApplication.sendEvent(viewer._tree, event)
+    qapp.processEvents()
+
+    assert slave_item.checkState(0) == Qt.CheckState.Checked
+    assert messages
+    assert "Node selection is locked" in messages[-1]
 
 
 def test_qt_tree_programmatic_expand_is_quiet_when_suppressed(
