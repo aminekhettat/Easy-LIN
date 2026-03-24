@@ -12,10 +12,10 @@ Project Metadata
 Main Capabilities
 -----------------
 
-- Parse LIN Description Files and present them in an accessible hierarchy tree
-  with breadcrumb navigation, type-ahead search, and screen reader support.
-- Connect to Vector-backed LIN hardware with a simulation fallback, managed in
-  a separate communication window.
+- Parse LIN Description Files and expose protocol/frame/signal structure in a
+  navigable hierarchy.
+- Operate LIN communication on Vector-backed channels from a dedicated runtime
+  window.
 - Validate parsed LDF content with practical consistency rules.
 - Protect confidential local LDF assets from accidental commit or push.
 
@@ -28,8 +28,27 @@ Architecture
   live frame monitoring and start/stop CSV logging
 - **Core:** Framework-agnostic parser, presenter, and consistency modules
 
-Accessibility Features (0.7.0)
-------------------------------
+Primary Engineering Objective
+-----------------------------
+
+- Reduce time from LDF intake to executable LIN communication workflows.
+- Keep parsing, validation, runtime control, and telemetry capture in one tool.
+- Maintain deterministic behavior through explicit runtime safeguards and
+  status tracking.
+
+Runtime and Selection Safeguards (0.7.0)
+----------------------------------------
+
+- Single-instance guard prevents launching a second Easy-LIN process.
+- Communication startup requires one selected master node and at least one selected slave node.
+- Node checkbox selection is locked while communication is connected.
+- Node checkbox selection is unlocked when communication returns to disconnected state.
+
+Accessibility Support (0.7.0)
+-----------------------------
+
+Accessibility is implemented as a dedicated support layer on top of the core
+technical workflows above.
 
 - Keyboard-driven navigation with documented shortcuts
 - Type-ahead search (Ctrl+F) with match count announcements
@@ -39,14 +58,6 @@ Accessibility Features (0.7.0)
 - QAccessible events for screen reader notification
 - RGAA 4.1.2 automatic compliance (16/16 checks)
 - Accessible names and descriptions on application-owned windows, dialogs, major controls, monitor widgets, and hierarchy support elements
-
-Runtime and Selection Safeguards (0.7.0)
-----------------------------------------
-
-- Single-instance guard prevents launching a second Easy-LIN process.
-- Communication startup requires one selected master node and at least one selected slave node.
-- Node checkbox selection is locked while communication is connected.
-- Node checkbox selection is unlocked when communication returns to disconnected state.
 
 Release Roadmap
 ---------------

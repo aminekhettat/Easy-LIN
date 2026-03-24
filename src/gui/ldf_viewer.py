@@ -50,8 +50,6 @@ def _bold_font() -> QFont:
 class LDFViewer(QWidget):
     """Single-pane hierarchical LDF viewer with direct attribute nodes."""
 
-
-
     node_selection_changed = Signal(str, list)
     """Emitted when the user changes the node checkbox selection.
 
@@ -106,9 +104,7 @@ class LDFViewer(QWidget):
             "Type text to search the hierarchy tree, then press Enter or F3 to move through matches."
         )
         self._search_edit.setPlaceholderText("Type to search tree items...")
-        self._search_edit.setStyleSheet(
-            "QLineEdit:focus { border: 2px solid #005A9C; }"
-        )
+        self._search_edit.setStyleSheet("QLineEdit:focus { border: 2px solid #005A9C; }")
         self._search_edit.textChanged.connect(self._on_search_text_changed)
         self._search_edit.returnPressed.connect(self._find_next_match)
         search_layout.addWidget(self._search_edit)
@@ -190,15 +186,18 @@ class LDFViewer(QWidget):
 
             self._debug_tree_event("KeyPress", current, key=event.key())
 
+            if event.key() in (Qt.Key.Key_Space, Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                if self._toggle_current_checkable_node(current):
+                    return True
+
             if event.key() == Qt.Key.Key_Right:
-                # Right: expand current branch first; only move down when already expanded.
+                # Right: expand current branch and keep focus anchored on it.
                 if current.childCount() > 0 and not current.isExpanded():
                     self._debug_tree_event("Right-expand", current)
                     self._tree.expandItem(current)
                     return True
-                if current.isExpanded() and current.childCount() > 0:
-                    self._debug_tree_event("Right-go-child", current.child(0))
-                    self._select_and_reveal_item(current.child(0))
+                if current.childCount() > 0:
+                    self._debug_tree_event("Right-keep-current", current)
                     return True
 
             if event.key() == Qt.Key.Key_Left:
@@ -214,7 +213,10 @@ class LDFViewer(QWidget):
                     return True
 
             # Alt+Down: next sibling
-            if event.key() == Qt.Key.Key_Down and event.modifiers() & Qt.KeyboardModifier.AltModifier:
+            if (
+                event.key() == Qt.Key.Key_Down
+                and event.modifiers() & Qt.KeyboardModifier.AltModifier
+            ):
                 sibling = self._next_sibling(current)
                 if sibling is not None:
                     self._debug_tree_event("Alt-Down-sibling", sibling)
@@ -230,6 +232,22 @@ class LDFViewer(QWidget):
                 return True
 
         return super().eventFilter(obj, event)
+
+    def _toggle_current_checkable_node(self, item: QTreeWidgetItem) -> bool:
+        """Toggle one checkable node from the keyboard, honoring lock state."""
+        if not item.flags() & Qt.ItemFlag.ItemIsUserCheckable:
+            return False
+        if self._node_selection_locked or not item.flags() & Qt.ItemFlag.ItemIsEnabled:
+            self._announce_status("Node selection is locked while communication is connected.")
+            return True
+
+        target = (
+            Qt.CheckState.Unchecked
+            if item.checkState(0) == Qt.CheckState.Checked
+            else Qt.CheckState.Checked
+        )
+        item.setCheckState(0, target)
+        return True
 
     def _select_and_reveal_item(self, item: QTreeWidgetItem) -> None:
         """Make one tree item current and keep it visible in the viewport."""
@@ -606,8 +624,8 @@ class LDFViewer(QWidget):
     ) -> None:
         """Attach frame signal rows with characteristics and encoding details.
 
-            context_node: When given, a ``Direction`` property (TX/RX) is added
-                          to each signal relative to that node.
+        context_node: When given, a ``Direction`` property (TX/RX) is added
+                      to each signal relative to that node.
         """
         if not frame.signals:
             self._add_item(parent, "Signals", "none")
@@ -720,7 +738,9 @@ class LDFViewer(QWidget):
                 slave_item = self._add_item(slaves, slave)
                 slave_item.setFlags(slave_item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
                 slave_item.setCheckState(0, Qt.CheckState.Checked)
-                slave_item.setToolTip(0, "Uncheck to exclude this slave from the communication session.")
+                slave_item.setToolTip(
+                    0, "Uncheck to exclude this slave from the communication session."
+                )
                 self._slave_check_items.append(slave_item)
                 slave_frames = self._add_item(slave_item, "Related frames")
                 related_frames = [
@@ -944,21 +964,17 @@ class LDFViewer(QWidget):
             return
         if item not in self._slave_check_items:
             return
-        checked_slaves = [
-            s for s in self._slave_check_items if s.checkState(0) == Qt.CheckState.Checked
-        ]
-        if not checked_slaves:
-            self._tree.blockSignals(True)
-            item.setCheckState(0, Qt.CheckState.Checked)
-            self._tree.blockSignals(False)
-            self._announce_status("At least one slave must remain selected.")
-            return
         master, slaves = self.selected_nodes()
-        if master and slaves:
+        if master is not None:
             action = "Selected" if item.checkState(0) == Qt.CheckState.Checked else "Excluded"
-            self._announce_status(
-                f"{action} slave {item.text(0)}. {len(slaves)} slave(s) currently selected."
-            )
+            if slaves:
+                self._announce_status(
+                    f"{action} slave {item.text(0)}. {len(slaves)} slave(s) currently selected."
+                )
+            else:
+                self._announce_status(
+                    "No slave selected. Select at least one slave before connecting."
+                )
             self.node_selection_changed.emit(master, slaves)
 
     def selected_nodes(self) -> tuple[str | None, list[str]]:
@@ -1022,4 +1038,3 @@ class LDFViewer(QWidget):
         """Reload the viewer with a new LDF object."""
         self._ldf = ldf
         self._populate()
-

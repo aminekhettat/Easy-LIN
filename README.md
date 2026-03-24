@@ -6,26 +6,20 @@ Planned next patch release: 0.7.1
 
 Planned next minor release: 0.8.0
 
-Easy-LIN is an accessibility-first Python application for LIN (Local Interconnect Network) engineering, built with PySide6 (Qt 6).
+Easy-LIN is a Python engineering tool for LIN (Local Interconnect Network), built with PySide6 (Qt 6).
 
-It focuses on two workflows:
+It is designed around two core technical workflows:
 
-- Interpreting LDF files with a hierarchy tree, breadcrumb navigation, type-ahead search, and plain-language textual explanations for screen readers.
-- Connecting to Vector hardware over USB and sending/monitoring LIN traffic in a separate communication window (with simulation fallback when hardware is unavailable).
+- Parsing and inspecting LDF files with structured hierarchy, protocol metadata, and frame/signal details.
+- Operating LIN communication over Vector-backed channels (connect, request/response, scheduling, and monitoring), with simulation fallback when hardware is unavailable.
 
-## Accessibility Goals
+## Purpose
 
-The GUI is designed for blind and low-vision users:
+Easy-LIN provides one operational workspace for:
 
-- Keyboard-first workflow with explicit shortcuts
-- Screen-reader-friendly tree labels (no decorative symbols)
-- Breadcrumb trail showing current position in the hierarchy
-- Type-ahead search with match count announcements
-- Sibling navigation and position announcements ("Item 3 of 5")
-- Status bar narration for every event
-- QAccessible event notifications for screen readers
-- Dedicated focus shortcuts for major interface regions
-- Accessible names and descriptions across application-owned windows, dialogs, controls, and monitoring widgets
+- LDF parsing, hierarchy exploration, and consistency validation
+- Runtime LIN communication control on supported Vector hardware
+- Session observability through status tracking and CSV trace export
 
 ## Features
 
@@ -33,8 +27,6 @@ The GUI is designed for blind and low-vision users:
 
 - Parse LDF content (LIN 1.3, 2.0, 2.1, 2.2 style structures)
 - Display nodes, signals, frames, schedules, and encodings in a hierarchy tree
-- Breadcrumb trail and position announcements for navigation context
-- Type-ahead search (Ctrl+F) to find items in the tree
 - Expand/collapse all children of current item
 - LDF consistency validation with detailed report
 - Node checkboxes for communication preselection (one master, at least one slave)
@@ -112,7 +104,22 @@ Easy-LIN can run with a project-local Vector runtime bundle (no global path setu
 
 ## Accessibility
 
+Accessibility is a dedicated support layer that complements the core LIN parsing
+and communication workflows described above.
+
 The PySide6 interface is optimized for keyboard and screen-reader usage.
+
+### Main Accessibility Capabilities
+
+- Keyboard-first workflow with explicit shortcuts
+- Screen-reader-friendly tree labels (no decorative symbols)
+- Breadcrumb trail showing current position in the hierarchy
+- Type-ahead search with match count announcements
+- Sibling navigation and position announcements ("Item 3 of 5")
+- Status bar narration for every event
+- QAccessible event notifications for screen readers
+- Dedicated focus shortcuts for major interface regions
+- Accessible names and descriptions across application-owned windows, dialogs, controls, and monitoring widgets
 
 ### Keyboard Shortcuts
 

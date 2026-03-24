@@ -23,6 +23,7 @@ from src.main_qt import run_qt_app
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 class _FakeApp:
     """Minimal stand-in for QApplication."""
 
@@ -199,6 +200,7 @@ def test_run_qt_app_exec_return_code():
 # ---------------------------------------------------------------------------
 # Single-instance lock
 # ---------------------------------------------------------------------------
+
 
 def test_run_qt_app_single_instance_already_running():
     """When QLockFile cannot be acquired, a warning is shown and app returns early."""

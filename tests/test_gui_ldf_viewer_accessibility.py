@@ -92,7 +92,9 @@ def _make_sample_ldf():
                 name="EncSig1",
                 logical_values=[LDFLogicalValue(signal_value=0, text="Idle")],
                 physical_ranges=[
-                    LDFPhysicalRange(min_value=0, max_value=100, scale=0.5, offset=-40.0, unit="deg C")
+                    LDFPhysicalRange(
+                        min_value=0, max_value=100, scale=0.5, offset=-40.0, unit="deg C"
+                    )
                 ],
             ),
         ],
@@ -115,6 +117,7 @@ def _make_sample_ldf():
 @pytest.fixture
 def viewer(qapp):
     from src.gui.ldf_viewer import LDFViewer
+
     ldf = _make_sample_ldf()
     v = LDFViewer(ldf)
     v.show()
@@ -124,6 +127,7 @@ def viewer(qapp):
 # ---------------------------------------------------------------------------
 # Search tests
 # ---------------------------------------------------------------------------
+
 
 class TestSearchBar:
     def test_show_search(self, viewer):
@@ -180,6 +184,7 @@ class TestSearchBar:
 # Breadcrumb tests
 # ---------------------------------------------------------------------------
 
+
 class TestBreadcrumb:
     def test_update_breadcrumb(self, viewer):
         item = viewer._tree.topLevelItem(0)
@@ -198,6 +203,7 @@ class TestBreadcrumb:
 
     def test_sibling_position_with_parent(self, viewer):
         from src.gui.ldf_viewer import LDFViewer
+
         root = viewer._tree.topLevelItem(0)
         if root.childCount() > 1:
             child = root.child(1)
@@ -206,6 +212,7 @@ class TestBreadcrumb:
 
     def test_sibling_position_top_level_single(self, viewer):
         from src.gui.ldf_viewer import LDFViewer
+
         # Only one top-level item => should return ""
         if viewer._tree.topLevelItemCount() == 1:
             item = viewer._tree.topLevelItem(0)
@@ -214,12 +221,14 @@ class TestBreadcrumb:
 
     def test_sibling_position_no_tree(self, viewer):
         from src.gui.ldf_viewer import LDFViewer
+
         orphan = QTreeWidgetItem(["orphan"])
         pos = LDFViewer._sibling_position(orphan)
         assert pos == ""
 
     def test_sibling_position_single_child(self, viewer):
         from src.gui.ldf_viewer import LDFViewer
+
         parent = QTreeWidgetItem(["parent"])
         child = QTreeWidgetItem(["only child"])
         parent.addChild(child)
@@ -231,9 +240,11 @@ class TestBreadcrumb:
 # Sibling navigation tests
 # ---------------------------------------------------------------------------
 
+
 class TestSiblingNavigation:
     def test_next_sibling_with_parent(self, viewer):
         from src.gui.ldf_viewer import LDFViewer
+
         root = viewer._tree.topLevelItem(0)
         if root.childCount() >= 2:
             first_child = root.child(0)
@@ -243,6 +254,7 @@ class TestSiblingNavigation:
 
     def test_next_sibling_last_child(self, viewer):
         from src.gui.ldf_viewer import LDFViewer
+
         root = viewer._tree.topLevelItem(0)
         if root.childCount() > 0:
             last_child = root.child(root.childCount() - 1)
@@ -251,6 +263,7 @@ class TestSiblingNavigation:
 
     def test_next_sibling_top_level(self, viewer):
         from src.gui.ldf_viewer import LDFViewer
+
         # Single top-level item
         item = viewer._tree.topLevelItem(0)
         if viewer._tree.topLevelItemCount() == 1:
@@ -258,11 +271,13 @@ class TestSiblingNavigation:
 
     def test_next_sibling_no_tree(self, viewer):
         from src.gui.ldf_viewer import LDFViewer
+
         orphan = QTreeWidgetItem(["orphan"])
         assert LDFViewer._next_sibling(orphan) is None
 
     def test_previous_sibling_with_parent(self, viewer):
         from src.gui.ldf_viewer import LDFViewer
+
         root = viewer._tree.topLevelItem(0)
         if root.childCount() >= 2:
             second_child = root.child(1)
@@ -272,6 +287,7 @@ class TestSiblingNavigation:
 
     def test_previous_sibling_first_child(self, viewer):
         from src.gui.ldf_viewer import LDFViewer
+
         root = viewer._tree.topLevelItem(0)
         if root.childCount() > 0:
             first_child = root.child(0)
@@ -280,11 +296,13 @@ class TestSiblingNavigation:
 
     def test_previous_sibling_top_level(self, viewer):
         from src.gui.ldf_viewer import LDFViewer
+
         item = viewer._tree.topLevelItem(0)
         assert LDFViewer._previous_sibling(item) is None
 
     def test_previous_sibling_no_tree(self, viewer):
         from src.gui.ldf_viewer import LDFViewer
+
         orphan = QTreeWidgetItem(["orphan"])
         assert LDFViewer._previous_sibling(orphan) is None
 
@@ -318,20 +336,22 @@ class TestKeyboardNavigationEventFilter:
         handled = viewer.eventFilter(viewer._tree, event)
         assert handled is False
 
-    def test_event_filter_right_expands_then_moves_to_child(self, viewer):
+    def test_event_filter_right_expands_and_keeps_current_item(self, viewer):
         root = viewer._tree.topLevelItem(0)
         assert root is not None
         assert root.childCount() > 0
 
         root.setExpanded(False)
         viewer._tree.setCurrentItem(root)
-        event_right = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Right, Qt.KeyboardModifier.NoModifier)
+        event_right = QKeyEvent(
+            QEvent.Type.KeyPress, Qt.Key.Key_Right, Qt.KeyboardModifier.NoModifier
+        )
         assert viewer.eventFilter(viewer._tree, event_right) is True
         assert root.isExpanded() is True
 
         viewer._tree.setCurrentItem(root)
         assert viewer.eventFilter(viewer._tree, event_right) is True
-        assert viewer._tree.currentItem() is root.child(0)
+        assert viewer._tree.currentItem() is root
 
     def test_event_filter_left_go_parent(self, viewer):
         root = viewer._tree.topLevelItem(0)
@@ -345,7 +365,9 @@ class TestKeyboardNavigationEventFilter:
         parent = child.parent()
         assert parent is not None
         viewer._tree.setCurrentItem(child)
-        event_left = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Left, Qt.KeyboardModifier.NoModifier)
+        event_left = QKeyEvent(
+            QEvent.Type.KeyPress, Qt.Key.Key_Left, Qt.KeyboardModifier.NoModifier
+        )
         assert viewer.eventFilter(viewer._tree, event_left) is True
         assert viewer._tree.currentItem() is parent
 
@@ -398,9 +420,13 @@ class TestDebugAndEncodingEdgePaths:
 
     def test_add_encoding_details_empty_sections_add_none_entries(self, viewer):
         signal_item = QTreeWidgetItem(["SignalC"])
-        empty_encoding = LDFEncodingType(name="EmptyEncoding", logical_values=[], physical_ranges=[])
+        empty_encoding = LDFEncodingType(
+            name="EmptyEncoding", logical_values=[], physical_ranges=[]
+        )
 
-        viewer._add_encoding_details(signal_item, "EmptyEncoding", {"EmptyEncoding": empty_encoding})
+        viewer._add_encoding_details(
+            signal_item, "EmptyEncoding", {"EmptyEncoding": empty_encoding}
+        )
         assert signal_item.childCount() >= 1
 
     def test_frame_related_to_slave_via_subscriber(self, viewer):
@@ -432,7 +458,9 @@ class TestDebugAndEncodingEdgePaths:
                 slaves=["S1"],
             ),
             signals=[
-                LDFSignal(name="OrphanSig", size=8, init_value=0, publisher="OTHER", subscribers=[]),
+                LDFSignal(
+                    name="OrphanSig", size=8, init_value=0, publisher="OTHER", subscribers=[]
+                ),
             ],
             frames=[
                 LDFFrame(
@@ -501,6 +529,7 @@ class TestClipboardAndStatusPaths:
 # Expand/collapse subtree tests
 # ---------------------------------------------------------------------------
 
+
 class TestExpandCollapseSubtree:
     def test_expand_current_subtree(self, viewer, qapp):
         root = viewer._tree.topLevelItem(0)
@@ -554,6 +583,7 @@ class TestExpandCollapseSubtree:
 # _fire_accessible_event tests
 # ---------------------------------------------------------------------------
 
+
 class TestFireAccessibleEvent:
     def test_fire_accessible_event_normal(self, viewer, qapp):
         root = viewer._tree.topLevelItem(0)
@@ -564,7 +594,6 @@ class TestFireAccessibleEvent:
         root = viewer._tree.topLevelItem(0)
         with patch("src.gui.ldf_viewer.QAccessibleEvent", side_effect=RuntimeError("no AT")):
             viewer._fire_accessible_event(root)  # Should not crash
-
 
     # ---------------------------------------------------------------------------
     # Node checkbox tests
@@ -594,11 +623,22 @@ class TestFireAccessibleEvent:
             item.setCheckState(0, Qt.CheckState.Unchecked)
             assert item.checkState(0) == Qt.CheckState.Checked
 
-        def test_last_slave_cannot_be_unchecked(self, viewer):
-            """Unchecking the sole slave must be silently blocked."""
+        def test_last_slave_can_be_unchecked(self, viewer):
+            """Unchecking the sole slave is allowed; connection validation handles this later."""
             slave = viewer._slave_check_items[0]
             slave.setCheckState(0, Qt.CheckState.Unchecked)
-            assert slave.checkState(0) == Qt.CheckState.Checked
+            assert slave.checkState(0) == Qt.CheckState.Unchecked
+
+        def test_unchecking_last_slave_announces_connection_guidance(self, viewer):
+            """Clearing all slaves should announce guidance for the connect step."""
+            slave = viewer._slave_check_items[0]
+            viewer._announce_status = MagicMock()
+
+            slave.setCheckState(0, Qt.CheckState.Unchecked)
+
+            viewer._announce_status.assert_called_with(
+                "No slave selected. Select at least one slave before connecting."
+            )
 
         def test_lock_node_selection_disables_items(self, viewer):
             viewer.lock_node_selection(True)
@@ -617,6 +657,7 @@ class TestFireAccessibleEvent:
         def test_uncheck_slave_emits_signal(self, qapp):
             """Unchecking a slave when 2 exist must emit node_selection_changed."""
             from src.gui.ldf_viewer import LDFViewer
+
             ldf2 = LDFFile(
                 protocol_version="2.1",
                 language_version="2.1",
@@ -660,7 +701,9 @@ class TestFireAccessibleEvent:
 
             v2._slave_check_items[1].setCheckState(0, Qt.CheckState.Unchecked)
 
-            v2._announce_status.assert_called_with("Excluded slave SB. 1 slave(s) currently selected.")
+            v2._announce_status.assert_called_with(
+                "Excluded slave SB. 1 slave(s) currently selected."
+            )
 
         def test_refresh_recreates_checkboxes(self, viewer):
             """After refresh() the master and slave items are fresh objects."""
@@ -673,6 +716,7 @@ class TestFireAccessibleEvent:
         def test_lock_with_no_nodes_does_not_crash(self, qapp):
             """lock_node_selection when no LDF has nodes must not crash."""
             from src.gui.ldf_viewer import LDFViewer
+
             ldf_empty = LDFFile(
                 protocol_version="2.1",
                 language_version="2.1",
@@ -684,5 +728,5 @@ class TestFireAccessibleEvent:
             )
             ldf_empty.build_lookups()
             v = LDFViewer(ldf_empty)
-            v.lock_node_selection(True)   # must not raise
+            v.lock_node_selection(True)  # must not raise
             v.lock_node_selection(False)  # must not raise

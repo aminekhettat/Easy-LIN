@@ -6,7 +6,10 @@ Atomic features covered:
 - Place diagnostic frames before schedule tables
 - Avoid a duplicated top-level signals section outside nodes
 - Keep tree selection anchored on expanded/collapsed items
+- Keep Right-arrow expansion anchored on current item (no forced jump)
 - Announce opened/closed hierarchy rows for non-visual feedback
+- Toggle checkable communication nodes from keyboard (Space/Enter)
+- Allow temporary zero-slave selection with clear guidance for connection step
 - Focus hierarchy tree directly after LDF load
 - Provide deterministic region focus and region-cycling behavior
 - Keep global accessibility shortcuts configured for application-wide handling
@@ -406,6 +409,91 @@ def test_qt_tree_left_key_collapses_without_jumping_to_top(
     # The branch should collapse but keyboard focus must remain on that branch.
     assert viewer._tree.currentItem() is nodes
     assert not nodes.isExpanded()
+
+
+def test_qt_tree_right_key_expands_without_forcing_child_navigation(
+    qapp: QApplication,
+    sample_ldf_text: str,
+) -> None:
+    """Ensure Right expands a branch but keeps keyboard focus on that branch."""
+    ldf = parse_ldf_string(sample_ldf_text)
+    viewer = LDFViewer(ldf)
+    viewer.show()
+
+    root = viewer._tree.topLevelItem(0)
+    nodes = root.child(1)
+    viewer._tree.collapseItem(nodes)
+    viewer._tree.setCurrentItem(nodes)
+    qapp.processEvents()
+
+    event = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Right, Qt.KeyboardModifier.NoModifier)
+    QApplication.sendEvent(viewer._tree, event)
+    qapp.processEvents()
+
+    assert viewer._tree.currentItem() is nodes
+    assert nodes.isExpanded()
+
+
+def test_qt_tree_space_toggles_slave_check_state(
+    qapp: QApplication,
+    sample_ldf_text: str,
+) -> None:
+    """Ensure Space toggles the current slave checkbox for keyboard-only usage."""
+    ldf = parse_ldf_string(sample_ldf_text)
+    viewer = LDFViewer(ldf)
+    viewer.show()
+
+    root = viewer._tree.topLevelItem(0)
+    nodes = root.child(1)
+    slaves_root = nodes.child(1)
+    slave_item = slaves_root.child(0)
+
+    viewer._tree.setCurrentItem(slave_item)
+    qapp.processEvents()
+    assert slave_item.checkState(0) == Qt.CheckState.Checked
+
+    event = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Space, Qt.KeyboardModifier.NoModifier)
+    QApplication.sendEvent(viewer._tree, event)
+    qapp.processEvents()
+    assert slave_item.checkState(0) == Qt.CheckState.Unchecked
+
+    QApplication.sendEvent(viewer._tree, event)
+    qapp.processEvents()
+    assert slave_item.checkState(0) == Qt.CheckState.Checked
+
+
+def test_qt_tree_can_uncheck_all_slaves_and_reports_empty_selection(
+    qapp: QApplication,
+    sample_ldf_text: str,
+) -> None:
+    """Ensure users can uncheck all slaves and still receive clear selection state."""
+    ldf = parse_ldf_string(sample_ldf_text)
+    viewer = LDFViewer(ldf)
+    viewer.show()
+
+    emitted: list[tuple[str, list[str]]] = []
+    viewer.node_selection_changed.connect(lambda m, s: emitted.append((m, list(s))))
+
+    root = viewer._tree.topLevelItem(0)
+    nodes = root.child(1)
+    slaves_root = nodes.child(1)
+    first_slave = slaves_root.child(0)
+    second_slave = slaves_root.child(1)
+
+    viewer._tree.setCurrentItem(first_slave)
+    event = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Space, Qt.KeyboardModifier.NoModifier)
+    QApplication.sendEvent(viewer._tree, event)
+    qapp.processEvents()
+
+    viewer._tree.setCurrentItem(second_slave)
+    QApplication.sendEvent(viewer._tree, event)
+    qapp.processEvents()
+
+    master, slaves = viewer.selected_nodes()
+    assert master == "M"
+    assert slaves == []
+    assert emitted
+    assert emitted[-1] == ("M", [])
 
 
 def test_qt_tree_programmatic_expand_is_quiet_when_suppressed(
