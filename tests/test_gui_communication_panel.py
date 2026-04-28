@@ -994,3 +994,28 @@ class TestVectorBackendAdapter:
 
         adapter._master = _NoDllPath()
         assert adapter.dll_path is None
+
+
+# ---------------------------------------------------------------------------
+# Schedule diagnostics badge
+# ---------------------------------------------------------------------------
+
+
+class TestScheduleDiagnostics:
+    def test_diagnostics_displayed_after_load_ldf(self, panel):
+        ldf = _make_ldf()
+        panel.load_ldf(ldf)
+        text = panel._sched_diag_label.text()
+        assert "Bus load:" in text
+        assert "issue(s)" in text
+
+    def test_diagnostics_reset_when_no_schedule(self, panel):
+        # No LDF loaded yet -> dash placeholder.
+        assert panel._sched_diag_label.text() == "\u2014"
+
+    def test_diagnostics_color_green_for_low_load(self, panel):
+        ldf = _make_ldf()
+        panel.load_ldf(ldf)
+        style = panel._sched_diag_label.styleSheet()
+        # Single 2-byte frame at 19.2 kbps over a 10 ms slot -> well under 60%.
+        assert "#1B5E20" in style

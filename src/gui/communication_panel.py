@@ -6,7 +6,7 @@ schedule execution, and live frame monitoring.
 :author: Amine Khettat
 :company: BLIND SYSTEMS
 :website: https://www.blindsystems.org
-:version: 0.7.0
+:version: 0.10.0
 :copyright: Copyright (c) 2026 Amine Khettat
 :license: Easy-LIN Source-Available License Version 1.0. See LICENSE.
 :disclaimer: Provided "AS IS", without warranties or liability, as described
@@ -43,6 +43,7 @@ from PySide6.QtGui import QColor
 
 from src.ldf_parser import LDFFile
 from src.lin_master import LINMaster, ReceivedFrame
+from src.lin_scheduler import bus_load_ratio, validate_schedule
 
 log = logging.getLogger(__name__)
 
@@ -834,8 +835,65 @@ class CommunicationPanel(QWidget):
         self._sched_stop_btn.clicked.connect(self._stop_schedule)
         layout.addWidget(self._sched_stop_btn)
 
+        # Diagnostics badge (bus-load + validator issues) for the active schedule.
+        self._sched_diag_label = QLabel("—")
+        self._sched_diag_label.setAccessibleName("Schedule diagnostics")
+        self._sched_diag_label.setAccessibleDescription(
+            "Shows the computed bus load percentage and the number of validator issues "
+            "for the currently selected schedule table."
+        )
+        self._sched_diag_label.setToolTip(
+            "Bus load and validator issues for the selected schedule."
+        )
+        layout.addWidget(self._sched_diag_label)
+
+        self._sched_combo.currentIndexChanged.connect(self._on_schedule_changed)
+
         layout.addStretch()
         return box
+
+    def _on_schedule_changed(self, _index: int) -> None:
+        """Recompute and display bus-load and validator issues for the active table."""
+        self._refresh_schedule_diagnostics()
+
+    def _refresh_schedule_diagnostics(self) -> None:
+        """Update the schedule diagnostics badge from the LDF and current selection."""
+        if self._ldf is None or self._sched_combo.count() == 0:
+            self._sched_diag_label.setText("—")
+            self._sched_diag_label.setToolTip(
+                "Bus load and validator issues for the selected schedule."
+            )
+            self._sched_diag_label.setStyleSheet("")
+            return
+        table = self._sched_combo.currentData()
+        if table is None:
+            self._sched_diag_label.setText("—")
+            return
+        try:
+            issues = validate_schedule(self._ldf, table)
+            load = bus_load_ratio(self._ldf, table)
+        except Exception:  # noqa: BLE001 - diagnostics must never break the GUI
+            log.exception("Failed to compute schedule diagnostics for '%s'.", table.name)
+            self._sched_diag_label.setText("diag error")
+            self._sched_diag_label.setStyleSheet("color: #8B0000;")
+            return
+        load_pct = load * 100.0
+        text = f"Bus load: {load_pct:.1f}% • {len(issues)} issue(s)"
+        if issues or load >= 0.80:
+            color = "#8B0000"  # red
+        elif load >= 0.60:
+            color = "#B25900"  # amber
+        else:
+            color = "#1B5E20"  # green
+        self._sched_diag_label.setText(text)
+        self._sched_diag_label.setStyleSheet(f"color: {color}; font-weight: 600;")
+        if issues:
+            tip_lines = [f"[{issue.code}] {issue.message}" for issue in issues]
+            self._sched_diag_label.setToolTip("\n".join(tip_lines))
+        else:
+            self._sched_diag_label.setToolTip(
+                f"Bus load {load_pct:.1f}% • schedule passes validation."
+            )
 
     def _build_monitor_options_group(self) -> QGroupBox:
         """Create options controlling which received frames are shown."""
@@ -892,6 +950,7 @@ class CommunicationPanel(QWidget):
         self._sched_start_btn.setEnabled(
             self._backend.is_connected and self._sched_combo.count() > 0
         )
+        self._refresh_schedule_diagnostics()
 
     def configure_selection(self, master: str, slaves: list[str]) -> None:
         """Store selected master and slave nodes used to gate communication start."""

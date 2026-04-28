@@ -1,10 +1,10 @@
 # Easy-LIN
 
-Current release: 0.9.0
+Current release: 0.10.0
 
-Planned next patch release: 0.9.1
+Planned next patch release: 0.10.1
 
-Planned next minor release: 0.10.0
+Planned next minor release: 0.11.0
 
 ## Automated Version Bump
 

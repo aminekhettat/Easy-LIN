@@ -62,9 +62,30 @@ technical workflows above.
 Release Roadmap
 ---------------
 
-- Current release: 0.9.0
-- Next patch release: 0.9.1, focused on follow-up runtime diagnostics, integrity checks, and troubleshooting guidance
-- Next minor release: 0.10.0, focused on the next larger communication workflow increment after the 0.9.x line
+- Current release: 0.10.0
+- Next patch release: 0.10.1, focused on follow-up runtime diagnostics, integrity checks, and troubleshooting guidance
+- Next minor release: 0.11.0, focused on the next larger communication workflow increment after the 0.10.x line
+
+Release Highlights (0.10.0)
+---------------------------
+
+- New :py:mod:`src.lin_timing` module: pure-math LIN 2.2A frame-time
+  calculator (header, response, frame, with optional 1.4x slack factor) and
+  baudrate / data-length validators.
+- New :py:mod:`src.lin_scheduler` module: pure-function schedule validator
+  (master-time-base alignment, per-slot frame-time fit, frame-name resolution,
+  baudrate range), per-cycle plan builder, cycle-time and bus-load helpers.
+- :py:meth:`src.lin_master.LINMaster._schedule_loop` refactored to consume
+  the pre-computed plan with a single anchored deadline per cycle: drift no
+  longer accumulates across cycles, and the loop now accepts an injectable
+  clock/sleep pair so timing can be unit-tested deterministically.
+- Communication panel surfaces a live "Bus load: X.X% / N issue(s)" badge
+  next to the schedule selector, color-coded green / amber / red and with a
+  tooltip listing validator messages.
+- Opt-in hardware-loopback live test (channel 1 -> channel 2 on the same
+  Vector device) verifying that observed inter-header timestamps match the
+  planned offsets within (time_base + jitter) tolerance.
+
 
 LIN Runtime Workflows
 ---------------------

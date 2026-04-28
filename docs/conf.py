@@ -12,7 +12,7 @@ sys.path.insert(0, str(ROOT))
 project = "Easy-LIN"
 author = "Amine Khettat"
 copyright = "2026, Amine Khettat"
-release = "0.9.0"
+release = "0.10.0"
 version = release
 
 extensions = [

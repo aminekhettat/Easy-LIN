@@ -6,7 +6,7 @@ frame transmission, schedule execution, and receive callback dispatch.
 :author: Amine Khettat
 :company: BLIND SYSTEMS
 :website: https://www.blindsystems.org
-:version: 0.7.0
+:version: 0.10.0
 :copyright: Copyright (c) 2026 Amine Khettat
 :license: Easy-LIN Source-Available License Version 1.0. See LICENSE.
 :disclaimer: Provided "AS IS", without warranties or liability, as described
@@ -19,6 +19,7 @@ import time
 from typing import Callable, List, Optional
 
 from src.ldf_parser import LDFFile, LDFScheduleTable
+from src.lin_scheduler import PlannedSlot, build_plan, cycle_time_ms
 from src.vector_xl_api import (
     VectorXLApi,
     VectorXLDriverNotFoundError,
@@ -91,11 +92,21 @@ class LINMaster:
         on_frame_received: Optional[Callable[[ReceivedFrame], None]] = None,
         on_frame_changed: Optional[Callable[[ReceivedFrame, Optional[bytes]], None]] = None,
         on_error: Optional[Callable[[str], None]] = None,
+        *,
+        clock: Callable[[], float] = time.monotonic,
+        sleep: Callable[[float], None] = time.sleep,
     ) -> None:
-        """Initialize the master controller and its background-thread state."""
+        """Initialize the master controller and its background-thread state.
+
+        ``clock`` and ``sleep`` are injection points used by deterministic
+        unit tests; production code keeps the defaults (``time.monotonic`` /
+        ``time.sleep``).
+        """
         self._on_frame_received = on_frame_received
         self._on_frame_changed = on_frame_changed
         self._on_error = on_error
+        self._clock = clock
+        self._sleep = sleep
 
         self._api: Optional[VectorXLApi] = None
         self._port_handle: int = -1
@@ -434,26 +445,65 @@ class LINMaster:
                 log.exception("Error in on_frame_changed callback.")
 
     def _schedule_loop(self, schedule: LDFScheduleTable) -> None:
-        """Background thread: execute the schedule table repeatedly."""
+        """Background thread: execute the schedule table repeatedly.
+
+        Uses :func:`src.lin_scheduler.build_plan` to compute a deterministic
+        per-cycle plan (frame name, frame id, offset, delay) once, then
+        anchors all transmit deadlines to a single ``cycle_anchor`` value so
+        that drift does not accumulate across cycles. When no LDF is
+        available, falls back to a minimal in-place plan based on schedule
+        entry delays (no frame_id resolution, no transmit).
+        """
         ldf = self._ldf
+        if ldf is not None:
+            plan: List[PlannedSlot] = build_plan(ldf, schedule)
+            cycle_ms = cycle_time_ms(schedule)
+        else:
+            # Build a degraded plan so the loop still observes timing.
+            offset = 0.0
+            plan = []
+            for idx, entry in enumerate(schedule.entries):
+                plan.append(
+                    PlannedSlot(
+                        index=idx,
+                        offset_ms=offset,
+                        delay_ms=float(entry.delay),
+                        frame_name=entry.frame_name,
+                        frame_id=None,
+                        data_length=None,
+                    )
+                )
+                offset += float(entry.delay)
+            cycle_ms = offset
+
+        if not plan or cycle_ms <= 0.0:
+            return
+
+        cycle_anchor = self._clock()
+        cycle_idx = 0
         while not self._sched_stop.is_set():
-            for entry in schedule.entries:
+            for slot in plan:
                 if self._sched_stop.is_set():
                     break
-                # Resolve frame ID from LDF (if available)
-                frame_id: Optional[int] = None
-                if ldf is not None:
-                    frame = ldf.frame_by_name(entry.frame_name)
-                    if frame is not None:
-                        frame_id = frame.frame_id
-                if frame_id is not None:
-                    try:
-                        self._api.lin_send_request(self._port_handle, self._access_mask, frame_id)
-                    except VectorXLError as exc:
-                        log.warning("Schedule TX error: %s", exc)
-                        if self._on_error:
-                            self._on_error(str(exc))
-                # Sleep for the specified delay
-                deadline = time.monotonic() + entry.delay / 1000.0
-                while time.monotonic() < deadline and not self._sched_stop.is_set():
-                    time.sleep(0.001)
+                target = cycle_anchor + (cycle_idx * cycle_ms + slot.offset_ms) / 1000.0
+                self._wait_until(target)
+                if self._sched_stop.is_set():
+                    break
+                if slot.frame_id is None:
+                    continue
+                try:
+                    self._api.lin_send_request(self._port_handle, self._access_mask, slot.frame_id)
+                except VectorXLError as exc:
+                    log.warning("Schedule TX error: %s", exc)
+                    if self._on_error:
+                        self._on_error(str(exc))
+            cycle_idx += 1
+
+    def _wait_until(self, target: float) -> None:
+        """Sleep in ~1 ms increments until ``target`` (monotonic seconds)."""
+        while not self._sched_stop.is_set():
+            now = self._clock()
+            remaining = target - now
+            if remaining <= 0:
+                return
+            self._sleep(min(remaining, 0.001))
