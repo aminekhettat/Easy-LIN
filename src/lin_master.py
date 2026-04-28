@@ -155,7 +155,10 @@ class LINMaster:
     def list_lin_channels() -> List[dict]:
         """Return a list of available LIN channels as plain dicts.
 
-        Each dict has keys: ``name``, ``channel_index``, ``channel_mask``.
+        Each dict has keys: ``name``, ``channel_index``, ``channel_mask``,
+        and (when reported by the driver) ``hw_type``, ``hw_index``,
+        ``hw_channel``, ``device_serial``, ``article_number`` and
+        ``transceiver_name``.
         Returns an empty list if the Vector driver is not installed.
         """
         try:
@@ -164,18 +167,71 @@ class LINMaster:
             cfg = api.get_driver_config()
             channels = api.lin_channels(cfg)
             api.close_driver()
-            return [
-                {
-                    "name": ch.name.decode("ascii", errors="replace").strip("\x00"),
-                    "channel_index": ch.channelIndex,
-                    "channel_mask": ch.channelMask,
-                }
-                for ch in channels
-            ]
+            result: List[dict] = []
+            for ch in channels:
+                try:
+                    serial_raw = int(getattr(ch, "serialNumber", 0) or 0)
+                except (TypeError, ValueError):
+                    serial_raw = 0
+                hw_type = int(getattr(ch, "hwType", 0) or 0)
+                hw_index = int(getattr(ch, "hwIndex", 0) or 0)
+                if serial_raw:
+                    serial = str(serial_raw)
+                else:
+                    serial = f"{hw_type:03d}-{hw_index:03d}"
+                try:
+                    article = int(getattr(ch, "articleNumber", 0) or 0)
+                except (TypeError, ValueError):
+                    article = 0
+                xcvr_raw = getattr(ch, "transceiverName", b"") or b""
+                if isinstance(xcvr_raw, (bytes, bytearray)):
+                    xcvr = xcvr_raw.decode("ascii", errors="replace").strip("\x00")
+                else:
+                    xcvr = str(xcvr_raw)
+                try:
+                    bus_caps = int(getattr(ch, "channelBusCapabilities", 0) or 0)
+                except (TypeError, ValueError):
+                    bus_caps = 0
+                lin_configurable = VectorXLApi.is_lin_configurable(ch)
+                result.append(
+                    {
+                        "name": ch.name.decode("ascii", errors="replace").strip("\x00"),
+                        "channel_index": ch.channelIndex,
+                        "channel_mask": ch.channelMask,
+                        "hw_type": hw_type,
+                        "hw_index": hw_index,
+                        "hw_channel": int(getattr(ch, "hwChannel", 0) or 0),
+                        "device_serial": serial,
+                        "article_number": article,
+                        "transceiver_name": xcvr,
+                        "bus_capabilities": bus_caps,
+                        "lin_configurable": lin_configurable,
+                    }
+                )
+            return result
         except VectorXLDriverNotFoundError:
             return []
         except Exception as exc:
             log.warning("Could not enumerate LIN channels: %s", exc)
+            return []
+
+    @staticmethod
+    def auto_assign_lin_channels(app_name: str = "EasyLIN") -> List[dict]:
+        """Register every detected LIN channel with the Vector driver under
+        ``app_name`` so the application appears pre-configured in Vector
+        Hardware Manager (no manual channel assignment required).
+
+        Returns the list of resulting assignments, or an empty list if the
+        Vector driver is not installed.
+        """
+        try:
+            from src.communication.hardware_discovery import HardwareDiscovery
+
+            return HardwareDiscovery().auto_assign_application(app_name=app_name)
+        except VectorXLDriverNotFoundError:
+            return []
+        except Exception as exc:
+            log.warning("Auto channel assignment failed: %s", exc)
             return []
 
     # ------------------------------------------------------------------

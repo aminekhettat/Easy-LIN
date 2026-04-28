@@ -45,8 +45,26 @@ XL_ERR_PORT_IS_OFFLINE = 117
 XL_ERR_INVALID_PORT = 118
 XL_ERR_WRONG_PARAMETER = 101
 
-# Bus types
-XL_BUS_TYPE_LIN = 0x00000200
+# Bus types (from vxlapi.h)
+XL_BUS_TYPE_NONE = 0x00000000
+XL_BUS_TYPE_CAN = 0x00000001
+XL_BUS_TYPE_LIN = 0x00000002
+XL_BUS_TYPE_FLEXRAY = 0x00000004
+XL_BUS_TYPE_DAIO = 0x00000040
+
+# channelBusCapabilities bit layout (from vxlapi.h):
+#   - lower 16 bits: bus types the channel is *compatible* with.
+#   - upper 16 bits: bus types the channel can *currently* be activated as
+#     (i.e. it is configurable as such right now without piggyback / firmware
+#     changes).
+XL_BUS_COMPATIBLE_CAN = XL_BUS_TYPE_CAN
+XL_BUS_COMPATIBLE_LIN = XL_BUS_TYPE_LIN
+XL_BUS_COMPATIBLE_FLEXRAY = XL_BUS_TYPE_FLEXRAY
+XL_BUS_COMPATIBLE_DAIO = XL_BUS_TYPE_DAIO
+XL_BUS_ACTIVE_CAP_CAN = XL_BUS_TYPE_CAN << 16
+XL_BUS_ACTIVE_CAP_LIN = XL_BUS_TYPE_LIN << 16
+XL_BUS_ACTIVE_CAP_FLEXRAY = XL_BUS_TYPE_FLEXRAY << 16
+XL_BUS_ACTIVE_CAP_DAIO = XL_BUS_TYPE_DAIO << 16
 
 # Hardware types (selected)
 XL_HWTYPE_VIRTUAL = 1
@@ -100,8 +118,10 @@ XL_INTERFACE_VERSION = 3
 XL_INTERFACE_VERSION_V3 = 3
 XL_INTERFACE_VERSION_V4 = 4
 
-# Channel capabilities
-XL_CHANNEL_FLAG_LIN_CAP = 0x00000400
+# Channel capabilities (note: there is NO dedicated LIN-capability flag in
+# modern vxlapi.h; LIN-capable channels are identified via
+# ``channelBusCapabilities & XL_BUS_TYPE_LIN``).
+XL_CHANNEL_FLAG_LIN_CAP = 0  # deprecated / no longer meaningful, kept for compat
 
 # Activate flags
 XL_ACTIVATE_RESET_CLOCK = 8
@@ -111,7 +131,8 @@ XL_ACTIVATE_RESET_CLOCK = 8
 # ---------------------------------------------------------------------------
 
 XL_MAX_APPNAME = 32
-XL_MAX_LENGTH = 8
+XL_MAX_LENGTH = 31  # Vector's XL_MAX_LENGTH from vxlapi.h (channel/transceiver names use char[32])
+XL_LIN_MAX_DATA_LEN = 8  # LIN protocol limit: max payload bytes per frame
 XL_CONFIG_MAX_CHANNELS = 64
 
 
@@ -143,29 +164,58 @@ class XL_LIN_MSG(ctypes.Structure):
 
 
 class XL_CHANNEL_CONFIG(ctypes.Structure):
-    """Per-channel hardware description returned by xlGetDriverConfig."""
+    """Per-channel hardware description returned by xlGetDriverConfig.
+
+    Layout matches Vector's official ``s_xl_channel_config`` from
+    ``vxlapi.h`` (XL Driver Library). Field sizes/order MUST stay in sync
+    with the C header — any drift causes downstream fields (notably
+    ``channelBusCapabilities``) to read garbage and breaks LIN-channel
+    detection on real hardware.
+
+    Note: Vector's header uses **default (natural) alignment**, not
+    ``#pragma pack(1)``. Forcing ``_pack_ = 1`` here would shrink each
+    channel by a few bytes and corrupt the per-channel stride inside
+    ``XL_DRIVER_CONFIG.channel[]`` (visible as truncated channel names).
+    """
 
     _pack_ = 1
     _fields_ = [
-        ("name", c_char * (XL_MAX_APPNAME + 1)),
-        ("hwType", c_ubyte),
-        ("hwIndex", c_ubyte),
-        ("hwChannel", c_ubyte),
-        ("transceiver", c_uint),
-        ("transceiverState", c_uint),
-        ("transceiverFeatureMask", c_uint),
-        ("channelIndex", c_uint),
-        ("channelMask", ctypes.c_ulonglong),
-        ("channelCapabilities", c_uint),
-        ("channelBusCapabilities", c_uint),
+        ("name", c_char * (XL_MAX_LENGTH + 1)),  # 32 bytes (XL_MAX_LENGTH=31)
+        ("hwType", c_ubyte),  # XL_HWTYPE_xxxx
+        ("hwIndex", c_ubyte),  # device index (same hw type)
+        ("hwChannel", c_ubyte),  # channel index on device
+        ("transceiverType", ctypes.c_ushort),  # TRANSCEIVER_TYPE_xxxx
+        ("transceiverState", ctypes.c_ushort),  # XL_TRANSCEIVER_STATUS...
+        ("configError", ctypes.c_ushort),  # XL_CHANNEL_CONFIG_ERROR_XXX
+        ("channelIndex", c_ubyte),  # global channel index 0,1,...
+        ("channelMask", ctypes.c_ulonglong),  # 1 << channelIndex
+        ("channelCapabilities", c_uint),  # XL_CHANNEL_FLAG_XXX (incl. LIN_CAP)
+        ("channelBusCapabilities", c_uint),  # XL_BUS_TYPE_xxx flags
         ("isOnBus", c_ubyte),
-        ("busParams", c_ubyte * 32),
-        ("_reserved", c_uint * 24),
-        ("channelVersion", c_uint),
-        ("channelBusActiveCapabilities", c_uint),
-        ("connectorMode", c_uint),
-        ("transceiverType", c_uint),
-        ("_reserved2", c_uint * 9),
+        ("connectedBusType", c_uint),  # currently selected bus
+        ("busParams", c_ubyte * 32),  # XLbusParams union
+        ("_doNotUse", c_uint),  # compatibility (EM00056439)
+        ("driverVersion", c_uint),
+        ("interfaceVersion", c_uint),
+        ("raw_data", c_uint * 10),
+        ("serialNumber", c_uint),
+        ("articleNumber", c_uint),
+        ("transceiverName", c_char * (XL_MAX_LENGTH + 1)),
+        ("specialCabFlags", c_uint),
+        ("dominantTimeout", c_uint),
+        ("dominantRecessiveDelay", c_ubyte),
+        ("recessiveDominantDelay", c_ubyte),
+        ("connectionInfo", c_ubyte),
+        ("currentlyAvailableTimestamps", c_ubyte),
+        ("minimalSupplyVoltage", ctypes.c_ushort),
+        ("maximalSupplyVoltage", ctypes.c_ushort),
+        ("maximalBaudrate", c_uint),
+        ("fpgaCoreCapabilities", c_ubyte),
+        ("specialDeviceStatus", c_ubyte),
+        ("channelBusActiveCapabilities", ctypes.c_ushort),
+        ("breakOffset", ctypes.c_ushort),
+        ("delimiterOffset", ctypes.c_ushort),
+        ("reserved", c_uint * 3),
     ]
 
 
@@ -372,16 +422,52 @@ class VectorXLApi:  # pylint: disable=too-many-public-methods
     def _setup_prototypes(self) -> None:
         """Configure ctypes signatures for the Vector XL functions in use."""
         dll = self._dll
+        self._missing_exports: List[str] = []
 
-        def _proto(name: str, restype, *argtypes):
-            """Assign a ctypes return type and argument list to one DLL export."""
+        def _proto(name: str, restype, *argtypes, optional: bool = False):
+            """Assign a ctypes return type and argument list to one DLL export.
+
+            When ``optional`` is True and the export is absent from the DLL,
+            the missing name is recorded in ``self._missing_exports`` instead
+            of raising ``AttributeError``. This lets discovery and
+            enumeration paths work against older or partial XL drivers that
+            do not ship every LIN extension symbol.
+            """
+            if not hasattr(dll, name):
+                if optional:
+                    self._missing_exports.append(name)
+                    return
+                raise AttributeError(f"function {name!r} not found")
             fn = getattr(dll, name)
             fn.restype = restype
             fn.argtypes = list(argtypes)
 
+        # Mandatory core driver / port / channel exports.
         _proto("xlOpenDriver", c_int)
         _proto("xlCloseDriver", c_int)
         _proto("xlGetDriverConfig", c_int, POINTER(XL_DRIVER_CONFIG))
+        _proto(
+            "xlGetApplConfig",
+            c_int,
+            c_char_p,  # appName
+            c_uint,  # appChannel
+            POINTER(c_uint),  # hwType out
+            POINTER(c_uint),  # hwIndex out
+            POINTER(c_uint),  # hwChannel out
+            c_uint,  # busType
+            optional=True,
+        )
+        _proto(
+            "xlSetApplConfig",
+            c_int,
+            c_char_p,  # appName
+            c_uint,  # appChannel
+            c_uint,  # hwType
+            c_uint,  # hwIndex
+            c_uint,  # hwChannel
+            c_uint,  # busType
+            optional=True,
+        )
         _proto(
             "xlOpenPort",
             c_int,
@@ -396,8 +482,29 @@ class VectorXLApi:  # pylint: disable=too-many-public-methods
         _proto("xlClosePort", c_int, c_int)
         _proto("xlActivateChannel", c_int, c_int, ctypes.c_ulonglong, c_uint, c_uint)
         _proto("xlDeactivateChannel", c_int, c_int, ctypes.c_ulonglong)
-        _proto("xlLinSetChannelParams", c_int, c_int, ctypes.c_ulonglong, XL_LIN_STAT_PARAM)
-        _proto("xlLinSetDLC", c_int, c_int, ctypes.c_ulonglong, c_ubyte * 64)
+        _proto("xlReceive", c_int, c_int, POINTER(c_uint), POINTER(XL_EVENT))
+        _proto("xlSetNotification", c_int, c_int, POINTER(ctypes.c_void_p), c_int)
+        _proto("xlSetTimerRate", c_int, c_int, c_ulonglong)
+        _proto("xlGetErrorString", c_char_p, c_int)
+
+        # LIN extension exports - optional because the LIN piggyback (and
+        # therefore these symbols) is not present in every XL driver build.
+        _proto(
+            "xlLinSetChannelParams",
+            c_int,
+            c_int,
+            ctypes.c_ulonglong,
+            XL_LIN_STAT_PARAM,
+            optional=True,
+        )
+        _proto(
+            "xlLinSetDLC",
+            c_int,
+            c_int,
+            ctypes.c_ulonglong,
+            c_ubyte * 64,
+            optional=True,
+        )
         _proto(
             "xlLinSetSlave",
             c_int,
@@ -407,6 +514,7 @@ class VectorXLApi:  # pylint: disable=too-many-public-methods
             c_ubyte * 8,
             c_ubyte,
             ctypes.c_ushort,
+            optional=True,
         )
         _proto(
             "xlLinSwitchSlave",
@@ -415,6 +523,7 @@ class VectorXLApi:  # pylint: disable=too-many-public-methods
             ctypes.c_ulonglong,
             c_ubyte,
             c_uint,
+            optional=True,
         )
         _proto(
             "xlLinSetFrameResponse",
@@ -423,18 +532,51 @@ class VectorXLApi:  # pylint: disable=too-many-public-methods
             ctypes.c_ulonglong,
             POINTER(XL_LIN_MSG),
             c_uint,
+            optional=True,
         )
-        _proto("xlLinSendRequest", c_int, c_int, ctypes.c_ulonglong, c_ubyte, c_uint)
-        _proto("xlLinWakeUp", c_int, c_int, ctypes.c_ulonglong)
-        _proto("xlLinSetSleepMode", c_int, c_int, ctypes.c_ulonglong, c_uint, c_ubyte)
-        _proto("xlReceive", c_int, c_int, POINTER(c_uint), POINTER(XL_EVENT))
-        _proto("xlSetNotification", c_int, c_int, POINTER(ctypes.c_void_p), c_int)
-        _proto("xlSetTimerRate", c_int, c_int, c_ulonglong)
-        _proto("xlGetErrorString", c_char_p, c_int)
+        _proto(
+            "xlLinSendRequest",
+            c_int,
+            c_int,
+            ctypes.c_ulonglong,
+            c_ubyte,
+            c_uint,
+            optional=True,
+        )
+        _proto("xlLinWakeUp", c_int, c_int, ctypes.c_ulonglong, optional=True)
+        _proto(
+            "xlLinSetSleepMode",
+            c_int,
+            c_int,
+            ctypes.c_ulonglong,
+            c_uint,
+            c_ubyte,
+            optional=True,
+        )
+        _proto(
+            "xlLinSetChecksum",
+            c_int,
+            c_int,
+            ctypes.c_ulonglong,
+            c_ubyte * 64,
+            optional=True,
+        )
 
-        # Optional export on some XL driver versions.
-        if hasattr(dll, "xlLinSetChecksum"):
-            _proto("xlLinSetChecksum", c_int, c_int, ctypes.c_ulonglong, c_ubyte * 64)
+    @property
+    def missing_exports(self) -> List[str]:
+        """Return LIN-extension exports that were not found in the loaded DLL."""
+        return list(self._missing_exports)
+
+    def _require_export(self, name: str) -> None:
+        """Ensure an optional DLL export is available before calling it."""
+        if name in self._missing_exports:
+            raise VectorXLDriverNotFoundError(
+                f"Vector XL Driver export {name!r} is not available in the "
+                f"loaded DLL ({self._dll_path}). The hardware can still be "
+                "enumerated, but LIN-specific operations require a driver "
+                "build that exports this function (typically shipped with "
+                "the LIN piggyback support pack)."
+            )
 
     # ------------------------------------------------------------------
     # Driver lifecycle
@@ -509,6 +651,104 @@ class VectorXLApi:  # pylint: disable=too-many-public-methods
                 result.append(ch)
         return result
 
+    @staticmethod
+    def is_lin_compatible(channel: XL_CHANNEL_CONFIG) -> bool:
+        """Return True when the channel hardware supports the LIN protocol.
+
+        This only proves that the channel *could* be used as LIN with a
+        suitable transceiver. It does **not** guarantee that LIN can be
+        activated right now. Use :meth:`is_lin_configurable` for that.
+        """
+        try:
+            caps = int(getattr(channel, "channelBusCapabilities", 0) or 0)
+        except (TypeError, ValueError):
+            return False
+        return bool(caps & XL_BUS_COMPATIBLE_LIN)
+
+    @staticmethod
+    def is_lin_configurable(channel: XL_CHANNEL_CONFIG) -> bool:
+        """Return True when the channel can be activated as a LIN interface
+        in its current hardware configuration.
+
+        Checks the ``XL_BUS_ACTIVE_CAP_LIN`` flag exposed by the Vector XL
+        driver in the upper 16 bits of ``channelBusCapabilities``. A channel
+        with only ``XL_BUS_COMPATIBLE_LIN`` set (without the active-cap bit)
+        typically requires a LIN piggyback or driver license that is not
+        currently installed.
+        """
+        try:
+            caps = int(getattr(channel, "channelBusCapabilities", 0) or 0)
+        except (TypeError, ValueError):
+            return False
+        return bool(caps & XL_BUS_ACTIVE_CAP_LIN)
+
+    def lin_configurable_channels(
+        self, cfg: Optional[XL_DRIVER_CONFIG] = None
+    ) -> List[XL_CHANNEL_CONFIG]:
+        """Return only channels that can currently be activated as LIN."""
+        if cfg is None:
+            cfg = self.get_driver_config()
+        return [
+            cfg.channel[i]
+            for i in range(cfg.channelCount)
+            if self.is_lin_configurable(cfg.channel[i])
+        ]
+
+    # ------------------------------------------------------------------
+    # Application-channel registration (Vector Hardware Manager)
+    # ------------------------------------------------------------------
+
+    def get_appl_config(
+        self, app_name: str, app_channel: int, bus_type: int = XL_BUS_TYPE_LIN
+    ) -> Tuple[int, int, int]:
+        """Return the (hwType, hwIndex, hwChannel) currently assigned to one
+        application channel in Vector Hardware Manager.
+
+        Returns ``(0, 0, 0)`` when the application channel is not yet
+        registered with the driver.
+        """
+        self._require_export("xlGetApplConfig")
+        hw_type = c_uint(0)
+        hw_index = c_uint(0)
+        hw_channel = c_uint(0)
+        status = self._dll.xlGetApplConfig(
+            app_name.encode("ascii"),
+            c_uint(app_channel),
+            ctypes.byref(hw_type),
+            ctypes.byref(hw_index),
+            ctypes.byref(hw_channel),
+            c_uint(bus_type),
+        )
+        if status != XL_SUCCESS:
+            # Treat any failure as "not configured" so callers can decide
+            # whether to register the application channel themselves.
+            return 0, 0, 0
+        return int(hw_type.value), int(hw_index.value), int(hw_channel.value)
+
+    def set_appl_config(
+        self,
+        app_name: str,
+        app_channel: int,
+        hw_type: int,
+        hw_index: int,
+        hw_channel: int,
+        bus_type: int = XL_BUS_TYPE_LIN,
+    ) -> None:
+        """Register an application channel in Vector Hardware Manager so
+        that the named application is bound to a specific physical channel.
+        """
+        self._require_export("xlSetApplConfig")
+        status = self._dll.xlSetApplConfig(
+            app_name.encode("ascii"),
+            c_uint(app_channel),
+            c_uint(hw_type),
+            c_uint(hw_index),
+            c_uint(hw_channel),
+            c_uint(bus_type),
+        )
+        if status != XL_SUCCESS:
+            raise VectorXLError("xlSetApplConfig", status)
+
     # ------------------------------------------------------------------
     # Port management
     # ------------------------------------------------------------------
@@ -561,6 +801,7 @@ class VectorXLApi:  # pylint: disable=too-many-public-methods
             LINVersion=lin_version,
             reserved=0,
         )
+        self._require_export("xlLinSetChannelParams")
         status = self._dll.xlLinSetChannelParams(
             port_handle,
             ctypes.c_ulonglong(access_mask),
@@ -579,6 +820,7 @@ class VectorXLApi:  # pylint: disable=too-many-public-methods
         arr = (c_ubyte * 64)(*([0] * 64))
         for i, v in enumerate(dlc_table[:64]):
             arr[i] = v
+        self._require_export("xlLinSetDLC")
         status = self._dll.xlLinSetDLC(
             port_handle,
             ctypes.c_ulonglong(access_mask),
@@ -600,6 +842,7 @@ class VectorXLApi:  # pylint: disable=too-many-public-methods
         msg.dlc = len(data)
         for i, b in enumerate(data[:8]):
             msg.data[i] = b
+        self._require_export("xlLinSetFrameResponse")
         status = self._dll.xlLinSetFrameResponse(
             port_handle,
             ctypes.c_ulonglong(access_mask),
@@ -627,6 +870,7 @@ class VectorXLApi:  # pylint: disable=too-many-public-methods
         for i, value in enumerate(data[:8]):
             payload[i] = int(value) & 0xFF
         arr = (c_ubyte * 8)(*payload)
+        self._require_export("xlLinSetSlave")
         status = self._dll.xlLinSetSlave(
             port_handle,
             ctypes.c_ulonglong(access_mask),
@@ -646,6 +890,7 @@ class VectorXLApi:  # pylint: disable=too-many-public-methods
         mode: int,
     ) -> None:
         """Enable or disable one configured LIN slave during active measurement."""
+        self._require_export("xlLinSwitchSlave")
         status = self._dll.xlLinSwitchSlave(
             port_handle,
             ctypes.c_ulonglong(access_mask),
@@ -657,6 +902,7 @@ class VectorXLApi:  # pylint: disable=too-many-public-methods
 
     def lin_wakeup(self, port_handle: int, access_mask: int) -> None:
         """Transmit a LIN wake-up request on the selected channel."""
+        self._require_export("xlLinWakeUp")
         status = self._dll.xlLinWakeUp(port_handle, ctypes.c_ulonglong(access_mask))
         if status != XL_SUCCESS:
             raise VectorXLError("xlLinWakeUp", status)
@@ -669,6 +915,7 @@ class VectorXLApi:  # pylint: disable=too-many-public-methods
         lin_id: int = 0,
     ) -> None:
         """Put the LIN channel into sleep mode, optionally configuring wake-up ID."""
+        self._require_export("xlLinSetSleepMode")
         status = self._dll.xlLinSetSleepMode(
             port_handle,
             ctypes.c_ulonglong(access_mask),
@@ -729,6 +976,7 @@ class VectorXLApi:  # pylint: disable=too-many-public-methods
 
         The slave whose ID matches will respond with its data bytes.
         """
+        self._require_export("xlLinSendRequest")
         status = self._dll.xlLinSendRequest(
             port_handle,
             ctypes.c_ulonglong(access_mask),
@@ -763,7 +1011,7 @@ class VectorXLApi:  # pylint: disable=too-many-public-methods
         """
         if frame_id < 0 or frame_id > 0x3F:
             raise VectorXLError("lin_send_response", XL_ERR_WRONG_PARAMETER)
-        if dlc < 0 or dlc > XL_MAX_LENGTH:
+        if dlc < 0 or dlc > XL_LIN_MAX_DATA_LEN:
             raise VectorXLError("lin_send_response", XL_ERR_WRONG_PARAMETER)
         payload = list(data[:dlc])
         if len(payload) < dlc:

@@ -16,7 +16,8 @@ class TestHardwareDiscovery:
         ch.hwChannel = hw_channel
         ch.channelIndex = hw_channel
         ch.channelMask = mask
-        ch.channelBusCapabilities = 0x00000200 if lin_cap else 0
+        ch.channelBusCapabilities = 0x00000002 if lin_cap else 0
+        ch.serialNumber = 0  # explicitly unset → discovery falls back to hwType-hwIndex
         return ch
 
     def test_scan_devices_returns_all_devices(self):

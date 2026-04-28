@@ -49,6 +49,8 @@ class FakeDLL:
         self.xlOpenDriver = MagicMock(return_value=0)
         self.xlCloseDriver = MagicMock(return_value=0)
         self.xlGetDriverConfig = MagicMock(return_value=0)
+        self.xlGetApplConfig = MagicMock(return_value=0)
+        self.xlSetApplConfig = MagicMock(return_value=0)
         self.xlOpenPort = MagicMock(return_value=0)
         self.xlClosePort = MagicMock(return_value=0)
         self.xlActivateChannel = MagicMock(return_value=0)
@@ -159,7 +161,7 @@ class TestConstants:
         assert XL_HARDWARE_NOT_PRESENT == 129
 
     def test_xl_bus_type_lin(self):
-        assert XL_BUS_TYPE_LIN == 0x00000200
+        assert XL_BUS_TYPE_LIN == 0x00000002
 
     def test_xl_lin_master(self):
         assert XL_LIN_MASTER == 1
@@ -1071,3 +1073,97 @@ class TestDllPath:
         with patch.object(VectorXLApi, "_load_dll", return_value=fake):
             api = VectorXLApi()
         assert api.dll_path is None
+
+
+# ===================================================================
+# 17. Optional / mandatory DLL export resolution (regression)
+# ===================================================================
+#
+# Regression for a bug observed against vxlapi64.dll v25.20.14 which does
+# not export ``xlLinSetFrameResponse``: ``VectorXLApi()`` crashed in
+# ``_setup_prototypes`` with ``AttributeError`` and made hardware
+# enumeration impossible. LIN-extension exports are now optional and
+# their absence is reported via ``missing_exports`` instead of crashing.
+
+
+class TestOptionalLinExportResolution:
+    """Verify graceful handling of XL drivers missing LIN-extension symbols."""
+
+    OPTIONAL_LIN_EXPORTS = [
+        "xlGetApplConfig",
+        "xlSetApplConfig",
+        "xlLinSetChannelParams",
+        "xlLinSetDLC",
+        "xlLinSetSlave",
+        "xlLinSwitchSlave",
+        "xlLinSetFrameResponse",
+        "xlLinSendRequest",
+        "xlLinWakeUp",
+        "xlLinSetSleepMode",
+        "xlLinSetChecksum",
+    ]
+
+    def test_construction_succeeds_when_optional_export_missing(self):
+        dll = FakeDLL()
+        del dll.xlLinSetFrameResponse
+        api, _ = _make_api(dll)
+        assert "xlLinSetFrameResponse" in api.missing_exports
+
+    def test_missing_exports_lists_every_absent_optional_symbol(self):
+        dll = FakeDLL()
+        for name in self.OPTIONAL_LIN_EXPORTS:
+            delattr(dll, name)
+        api, _ = _make_api(dll)
+        assert sorted(api.missing_exports) == sorted(self.OPTIONAL_LIN_EXPORTS)
+
+    def test_missing_exports_is_empty_when_all_present(self):
+        api, _ = _make_api()
+        assert api.missing_exports == []
+
+    def test_missing_exports_returns_a_copy(self):
+        api, _ = _make_api()
+        api._missing_exports.append("xlLinSetFrameResponse")
+        snapshot = api.missing_exports
+        snapshot.append("xlOpenDriver")
+        assert "xlOpenDriver" not in api.missing_exports
+
+    def test_calling_missing_optional_method_raises_clear_error(self):
+        dll = FakeDLL()
+        del dll.xlLinSetFrameResponse
+        api, _ = _make_api(dll)
+        api._dll_path = "fake.dll"
+        with pytest.raises(VectorXLDriverNotFoundError) as exc_info:
+            api.set_lin_frame_response(1, 0x01, 0x10, [0])
+        assert "xlLinSetFrameResponse" in str(exc_info.value)
+        assert "fake.dll" in str(exc_info.value)
+
+    @pytest.mark.parametrize(
+        "export, call",
+        [
+            ("xlLinSetChannelParams", lambda a: a.set_lin_channel_params(1, 0x01)),
+            ("xlLinSetDLC", lambda a: a.set_lin_dlc(1, 0x01, [8] * 64)),
+            ("xlLinSetSlave", lambda a: a.lin_set_slave(1, 0x01, 0x10, [0], 1, 0)),
+            ("xlLinSwitchSlave", lambda a: a.lin_switch_slave(1, 0x01, 0x10, 0)),
+            ("xlLinSetFrameResponse", lambda a: a.set_lin_frame_response(1, 0x01, 0x10, [0])),
+            ("xlLinSendRequest", lambda a: a.lin_send_request(1, 0x01, 0x10)),
+            ("xlLinWakeUp", lambda a: a.lin_wakeup(1, 0x01)),
+            ("xlLinSetSleepMode", lambda a: a.lin_set_sleep_mode(1, 0x01, 0)),
+        ],
+    )
+    def test_each_lin_extension_method_is_guarded(self, export, call):
+        dll = FakeDLL()
+        delattr(dll, export)
+        api, _ = _make_api(dll)
+        api._dll_path = "fake.dll"
+        with pytest.raises(VectorXLDriverNotFoundError) as exc_info:
+            call(api)
+        assert export in str(exc_info.value)
+
+    def test_mandatory_export_missing_raises_attribute_error(self):
+        """Removing a non-LIN core export still hard-fails at setup."""
+        dll = FakeDLL()
+        del dll.xlOpenDriver
+        api = vxl.VectorXLApi.__new__(vxl.VectorXLApi)
+        api._dll = dll
+        with pytest.raises(AttributeError, match="xlOpenDriver"):
+            api._setup_prototypes()

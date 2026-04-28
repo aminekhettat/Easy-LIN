@@ -35,6 +35,8 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QSplitter,
     QFileDialog,
+    QDialog,
+    QDialogButtonBox,
 )
 from PySide6.QtCore import Qt, Signal, QObject, Slot
 from PySide6.QtGui import QColor
@@ -430,6 +432,145 @@ class _FrameMonitor(QWidget):
 # ---------------------------------------------------------------------------
 
 
+# Mapping from XL_HWTYPE_* values to a human-readable Vector device family.
+_HWTYPE_LABELS = {
+    1: "Virtual",
+    21: "CANcaseXL",
+    55: "VN1600 family",
+    57: "VN1610 / VN1630 / VN1640 family",
+    61: "VN8900",
+    63: "VN8970",
+    66: "VN1530",
+    73: "VN1531",
+}
+
+
+def _format_hwtype(hw_type: int) -> str:
+    """Return ``'<label> (hwType=<n>)'`` for a Vector hardware-type code."""
+    label = _HWTYPE_LABELS.get(hw_type, "Vector hardware")
+    return f"{label} (hwType={hw_type})"
+
+
+class _DeviceInfoDialog(QDialog):
+    """Modal dialog listing detected Vector devices and their LIN channels."""
+
+    def __init__(self, channels: list[dict], parent=None) -> None:
+        """Build a read-only table grouping LIN channels by device serial."""
+        super().__init__(parent)
+        self.setWindowTitle("Vector Device Information")
+        self.setAccessibleName("Vector device information dialog")
+        self.setAccessibleDescription(
+            "Read-only summary of detected Vector hardware devices and their LIN-capable channels."
+        )
+        self.setMinimumSize(720, 320)
+
+        layout = QVBoxLayout(self)
+
+        if not channels:
+            empty = QLabel(
+                "No Vector LIN-capable hardware detected.\n\n"
+                "Make sure the Vector XL Driver Library is installed and "
+                "that the device is visible in Vector Hardware Manager."
+            )
+            empty.setAccessibleName("No device message")
+            empty.setWordWrap(True)
+            layout.addWidget(empty)
+        else:
+            # Group by (hw_type, hw_index) to display one block per device.
+            devices: dict[tuple[int, int], list[dict]] = {}
+            for ch in channels:
+                key = (int(ch.get("hw_type", 0)), int(ch.get("hw_index", 0)))
+                devices.setdefault(key, []).append(ch)
+
+            summary = QLabel(
+                f"{len(devices)} device(s) detected, {len(channels)} LIN channel(s) total."
+            )
+            summary.setAccessibleName("Device count summary")
+            layout.addWidget(summary)
+
+            for (hw_type, hw_index), dev_channels in sorted(devices.items()):
+                first = dev_channels[0]
+                serial = first.get("device_serial", "?")
+                article = first.get("article_number", 0)
+                article_str = f"#{article}" if article else "n/a"
+                header = QLabel(
+                    f"<b>Device:</b> {_format_hwtype(hw_type)} "
+                    f"&mdash; <b>S/N</b> {serial} &mdash; "
+                    f"<b>Article</b> {article_str} &mdash; "
+                    f"<b>hwIndex</b> {hw_index}"
+                )
+                header.setTextFormat(Qt.TextFormat.RichText)
+                header.setAccessibleName(f"Device {serial} header")
+                layout.addWidget(header)
+
+                table = QTableWidget(len(dev_channels), 6)
+                table.setAccessibleName(f"LIN channels of device {serial}")
+                table.setAccessibleDescription(
+                    "Per-channel hardware information for this Vector device."
+                )
+                table.setHorizontalHeaderLabels(
+                    [
+                        "Channel name",
+                        "hwChannel",
+                        "Global index",
+                        "Mask",
+                        "Transceiver",
+                        "LIN ready",
+                    ]
+                )
+                table.verticalHeader().setVisible(False)
+                table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+                table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+                for row, ch in enumerate(dev_channels):
+                    table.setItem(row, 0, QTableWidgetItem(str(ch.get("name", ""))))
+                    table.setItem(
+                        row,
+                        1,
+                        QTableWidgetItem(str(ch.get("hw_channel", ""))),
+                    )
+                    table.setItem(
+                        row,
+                        2,
+                        QTableWidgetItem(str(ch.get("channel_index", ""))),
+                    )
+                    mask = int(ch.get("channel_mask", 0))
+                    table.setItem(row, 3, QTableWidgetItem(f"0x{mask:X}"))
+                    table.setItem(
+                        row,
+                        4,
+                        QTableWidgetItem(str(ch.get("transceiver_name", "")) or "n/a"),
+                    )
+                    ready = bool(ch.get("lin_configurable", False))
+                    ready_item = QTableWidgetItem("Yes" if ready else "No")
+                    if not ready:
+                        ready_item.setToolTip(
+                            "Channel hardware is LIN-compatible but cannot be "
+                            "activated as a LIN interface in its current "
+                            "configuration (no LIN piggyback or driver "
+                            "license)."
+                        )
+                    table.setItem(row, 5, ready_item)
+                table.horizontalHeader().setSectionResizeMode(
+                    QHeaderView.ResizeMode.ResizeToContents
+                )
+                table.horizontalHeader().setStretchLastSection(True)
+                row_h = table.verticalHeader().defaultSectionSize()
+                table.setFixedHeight(
+                    table.horizontalHeader().height() + row_h * len(dev_channels) + 8
+                )
+                layout.addWidget(table)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.setAccessibleName("Device info dialog buttons")
+        buttons.rejected.connect(self.reject)
+        buttons.accepted.connect(self.accept)
+        # Only Close is shown; wire it to accept as well for keyboard users.
+        close_btn = buttons.button(QDialogButtonBox.StandardButton.Close)
+        if close_btn is not None:
+            close_btn.clicked.connect(self.accept)
+        layout.addWidget(buttons)
+
+
 class CommunicationPanel(QWidget):
     """
     Full communication panel combining:
@@ -559,6 +700,19 @@ class CommunicationPanel(QWidget):
         )
         self._refresh_btn.clicked.connect(self._refresh_channels)
         layout.addWidget(self._refresh_btn)
+
+        self._device_info_btn = QPushButton("\u2139 Device info")
+        self._device_info_btn.setFixedWidth(120)
+        self._device_info_btn.setAccessibleName("Show Vector device information")
+        self._device_info_btn.setAccessibleDescription(
+            "Open a dialog listing every detected Vector device, its serial "
+            "number, hardware type, transceiver and LIN channel assignment."
+        )
+        self._device_info_btn.setToolTip(
+            "Display detailed information about the connected Vector hardware."
+        )
+        self._device_info_btn.clicked.connect(self._show_device_info)
+        layout.addWidget(self._device_info_btn)
 
         self._connect_btn = QPushButton("Connect")
         self._connect_btn.setFixedWidth(90)
@@ -801,17 +955,49 @@ class CommunicationPanel(QWidget):
     def _refresh_channels(self) -> None:
         """Refresh the list of available Vector hardware channels."""
         self._channel_combo.clear()
+        # Best-effort: register the application channels in Vector Hardware
+        # Manager so the user does not have to do it manually.
+        try:
+            LINMaster.auto_assign_lin_channels()
+        except Exception as exc:  # noqa: BLE001
+            log.debug("Auto channel assignment skipped: %s", exc)
         channels = self._backend.list_lin_channels()
         if not isinstance(channels, list):
             channels = LINMaster.list_lin_channels()
         if channels:
+            usable = 0
             for ch in channels:
+                # Honour the driver's "LIN ready" flag when the backend
+                # supplied it. Channels without an active LIN piggyback are
+                # listed in the device-info dialog but cannot actually be
+                # opened, so we hide them from the connect combobox.
+                if isinstance(ch, dict) and "lin_configurable" in ch:
+                    if not ch.get("lin_configurable"):
+                        continue
+                serial = ch.get("device_serial") if isinstance(ch, dict) else None
+                if serial:
+                    label = f"{ch['name']} (ch {ch['channel_index']}, S/N {serial})"
+                else:
+                    label = f"{ch['name']} (ch {ch['channel_index']})"
+                self._channel_combo.addItem(label, userData=ch["channel_mask"])
+                usable += 1
+            if usable == 0:
                 self._channel_combo.addItem(
-                    f"{ch['name']} (ch {ch['channel_index']})",
-                    userData=ch["channel_mask"],
+                    "No LIN-configurable channel (missing piggyback?)",
+                    userData=None,
                 )
         else:
             self._channel_combo.addItem("No Vector hardware found", userData=None)
+
+    def _show_device_info(self) -> None:
+        """Open a dialog summarising every detected Vector device."""
+        try:
+            channels = LINMaster.list_lin_channels()
+        except Exception as exc:  # noqa: BLE001
+            channels = []
+            log.warning("Could not list LIN channels for device info: %s", exc)
+        dlg = _DeviceInfoDialog(channels, parent=self)
+        dlg.exec()
 
     def _toggle_connection(self) -> None:
         """Connect or disconnect depending on the current hardware state."""

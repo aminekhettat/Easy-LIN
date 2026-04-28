@@ -1,10 +1,10 @@
 # Easy-LIN
 
-Current release: 0.8.3
+Current release: 0.9.0
 
-Planned next patch release: 0.8.2
+Planned next patch release: 0.9.1
 
-Planned next minor release: 0.9.0
+Planned next minor release: 0.10.0
 
 ## Automated Version Bump
 
@@ -63,6 +63,9 @@ Easy-LIN provides one operational workspace for:
 
 - Managed in a separate window (View > Communication Window or Ctrl+Shift+C)
 - Vector transport through `python-can` + Vector XL driver
+- Automatic Vector device discovery on panel refresh: every detected LIN-configurable channel is registered with the XL driver under the application name `EasyLIN` (`xlSetApplConfig`), so no manual channel assignment is needed in Vector Hardware Manager
+- LIN-configurability gate: channels that are LIN-compatible at the silicon level but cannot currently be activated as LIN (no piggyback / no driver license) are detected via `XL_BUS_ACTIVE_CAP_LIN` and excluded from the channel selector
+- "Device info" dialog (button on the communication panel) shows every detected Vector device grouped by serial, with per-channel transceiver name, channel mask, global index and a "LIN ready" column
 - Connect/disconnect, send frames, monitor RX/TX
 - Start and stop live CSV logging while the communication window remains open
 - Logged CSV files start with session metadata (LDF file, master/slave names, protocol details)

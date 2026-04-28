@@ -62,9 +62,9 @@ technical workflows above.
 Release Roadmap
 ---------------
 
-- Current release: 0.8.3
-- Next patch release: 0.7.3, focused on runtime diagnostics, integrity checks, and troubleshooting guidance
-- Next minor release: 0.8.0, focused on the next larger communication workflow increment after the 0.7.x hardening line
+- Current release: 0.9.0
+- Next patch release: 0.9.1, focused on follow-up runtime diagnostics, integrity checks, and troubleshooting guidance
+- Next minor release: 0.10.0, focused on the next larger communication workflow increment after the 0.9.x line
 
 LIN Runtime Workflows
 ---------------------
@@ -105,6 +105,31 @@ Hardware Support Assumptions
 - Supported target is any Windows Vector interface exposing LIN-capable channels via XL Driver Library.
 - Discovery is dynamic from the active driver configuration and not restricted to a single device family.
 - LIN startup requires init access and reports explicit failure if permission is not granted.
+
+Vector Device Discovery and Auto-Assignment
+-------------------------------------------
+
+- Every refresh of the communication panel runs ``HardwareDiscovery.scan_devices()``
+  on the live XL driver configuration (driver opened on demand) to enumerate
+  Vector devices, their serial number, article number and transceiver name.
+- Each detected channel is classified as **LIN-compatible** (silicon supports
+  LIN) and **LIN-configurable** (LIN can be activated *now* in this hardware
+  configuration) by inspecting ``channelBusCapabilities`` against the
+  ``XL_BUS_COMPATIBLE_LIN`` and ``XL_BUS_ACTIVE_CAP_LIN`` flags.
+- Only LIN-configurable channels are exposed in the channel selector. Channels
+  without a piggyback or driver license are filtered out, and an explicit
+  "No LIN-configurable channel (missing piggyback?)" message is shown when
+  none qualify.
+- Configurable channels are automatically registered with the Vector driver
+  under the application name ``EasyLIN`` via ``xlSetApplConfig`` so no manual
+  channel assignment in Vector Hardware Manager is required. The operation is
+  idempotent: an already-correct assignment reports ``kept`` rather than being
+  rewritten.
+- A dedicated **Device info** dialog on the communication panel groups
+  detected channels by device (serial / article / hardware family) and lists
+  ``hwChannel``, global index, channel mask, transceiver name and a
+  ``LIN ready`` flag with explanatory tooltip when a channel is not
+  configurable.
 
 Build The HTML Documentation
 ----------------------------

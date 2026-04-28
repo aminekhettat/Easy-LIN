@@ -38,7 +38,7 @@ def mock_driver_config():
     ch0.hwChannel = 0
     ch0.channelIndex = 0
     ch0.channelMask = 0x1
-    ch0.channelBusCapabilities = 0x00000200
+    ch0.channelBusCapabilities = 0x00000002
 
     ch1 = MagicMock()
     ch1.name = b"VN1610 CH1\x00"
@@ -47,7 +47,7 @@ def mock_driver_config():
     ch1.hwChannel = 1
     ch1.channelIndex = 1
     ch1.channelMask = 0x2
-    ch1.channelBusCapabilities = 0x00000200
+    ch1.channelBusCapabilities = 0x00000002
 
     cfg.channel = [ch0, ch1]
     return cfg
